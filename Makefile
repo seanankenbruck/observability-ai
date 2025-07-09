@@ -31,7 +31,7 @@ setup: ## Start PostgreSQL and Redis for development
 
 migrate: ## Run database migrations
 	@echo "Running database migrations..."
-	go run cmd/test-db/main.go || true
+	go run cmd/migrate/main.go
 	@echo "Migrations completed!"
 
 test-db: setup ## Run database tests with example data
