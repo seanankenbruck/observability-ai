@@ -1,0 +1,24 @@
+# Ignore environment variable files
+.env
+.env.*
+deploy/configs/*.env
+
+# Ignore compiled binaries
+bin/
+
+# Ignore Go build cache and vendor
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+
+# Ignore IDE/editor files
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store

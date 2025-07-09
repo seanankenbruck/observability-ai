@@ -19,7 +19,7 @@ func main() {
 	})
 
 	// Initialize LLM client
-	llmClient, err := llm.NewOpenAIClient(getEnv("OPENAI_API_KEY", ""))
+	llmClient, err := llm.NewClaudeClient(getEnv("CLAUDE_API_KEY", ""), getEnv("CLAUDE_MODEL", ""))
 	if err != nil {
 		log.Fatal("Failed to initialize LLM client:", err)
 	}
