@@ -2,19 +2,13 @@
 
 .PHONY: help setup test-db migrate clean build run-test-db
 
-# Default environment variables
-export DB_HOST ?= localhost
-export DB_PORT ?= 5433
-export DB_NAME ?= observability_ai
-export DB_USER ?= obs_ai
-export DB_PASSWORD ?= changeme
-export DB_SSLMODE ?= disable
-
 help: ## Show this help message
 	@echo "Available commands:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 setup: ## Start PostgreSQL and Redis for development
+	@echo "Setting up environment..."
+	@cp deploy/configs/development.env .env
 	@echo "Starting development environment..."
 	docker-compose -f docker-compose.test.yml up -d
 	@echo "Waiting for PostgreSQL to be ready..."
@@ -27,11 +21,16 @@ setup: ## Start PostgreSQL and Redis for development
 		echo "Database user not ready yet, waiting..."; \
 		sleep 2; \
 	done
+	@echo "Waiting for Redis to be ready..."
+	@until docker-compose -f docker-compose.test.yml exec -T redis redis-cli -a changeme ping > /dev/null 2>&1; do \
+		echo "Redis is not ready yet, waiting..."; \
+		sleep 2; \
+	done
 	@echo "Development environment is ready!"
 
 migrate: ## Run database migrations
 	@echo "Running database migrations..."
-	go run cmd/migrate/main.go
+	@set -a; source .env; set +a; go run cmd/migrate/main.go
 	@echo "Migrations completed!"
 
 test-db: setup ## Run database tests with example data
@@ -39,11 +38,11 @@ test-db: setup ## Run database tests with example data
 	@echo "Verifying database connectivity..."
 	@docker-compose -f docker-compose.test.yml exec -T postgres pg_isready -U obs_ai -d observability_ai
 	@echo "Database is ready, running tests..."
-	go run cmd/test-db/main.go
+	@set -a; source .env; set +a; go run cmd/test-db/main.go
 
 build: ## Build the query processor
 	@echo "Building query processor..."
-	go build -o bin/query-processor cmd/query-processor/main.go
+	@set -a; source .env; set +a; go build -o bin/query-processor cmd/query-processor/main.go
 
 clean: ## Stop and remove development environment
 	@echo "Cleaning up development environment..."
@@ -91,3 +90,7 @@ db-embeddings: ## List query embeddings
 
 # Quick start command
 start: setup migrate test-db ## Start everything and run tests
+
+test-integration: setup ## Run integration tests with proper environment
+	@echo "Running integration tests..."
+	@set -a; source .env; set +a; go run cmd/test-integration/main.go
