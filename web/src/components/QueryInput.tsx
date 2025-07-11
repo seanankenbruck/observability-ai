@@ -64,7 +64,7 @@ export const QueryInput: React.FC<QueryInputProps> = ({
     const suggestions: string[] = [];
 
     // Service-specific suggestions
-    services.forEach(service => {
+    (services || []).forEach(service => {
       if (service.name.toLowerCase().includes(query) || query.includes(service.name.toLowerCase())) {
         suggestions.push(`Show error rate for ${service.name}`);
         suggestions.push(`What's the latency for ${service.name}?`);
@@ -100,7 +100,7 @@ export const QueryInput: React.FC<QueryInputProps> = ({
   const suggestions = showSuggestions ? getSuggestions() : [];
 
   const handleSuggestionClick = (suggestion: string) => {
-    if (suggestion.includes('[service-name]') && services.length > 0) {
+    if (suggestion.includes('[service-name]') && services && services.length > 0) {
       // Replace placeholder with first available service
       const completeSuggestion = suggestion.replace('[service-name]', services[0].name);
       setInput(completeSuggestion);
@@ -176,7 +176,7 @@ export const QueryInput: React.FC<QueryInputProps> = ({
             <span>Press Enter to send, Shift+Enter for new line</span>
           </div>
 
-          {services.length > 0 && (
+          {services && services.length > 0 && (
             <div className="flex items-center space-x-1">
               <span className="text-xs text-gray-400">Services available:</span>
               <span className="text-xs text-blue-400">
