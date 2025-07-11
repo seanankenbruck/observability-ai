@@ -299,7 +299,7 @@ func testSimilaritySearch(ctx context.Context, mapper semantic.Mapper) error {
 	// This tests that embeddings were stored and can be retrieved
 
 	// Create a test embedding (this mimics what the LLM client would do)
-	testEmbedding := make([]float32, 384)
+	testEmbedding := make([]float32, 1536)
 	for i := range testEmbedding {
 		testEmbedding[i] = float32(i) / float32(len(testEmbedding))
 	}

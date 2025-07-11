@@ -127,7 +127,8 @@ func (qp *QueryProcessor) ProcessQuery(ctx context.Context, req *QueryRequest) (
 func (qp *QueryProcessor) buildPrompt(ctx context.Context, req *QueryRequest, intent *QueryIntent, similarQueries []semantic.SimilarQuery) (string, error) {
 	var promptBuilder strings.Builder
 
-	promptBuilder.WriteString("You are a PromQL expert. Convert this natural language query to PromQL.\n\n")
+	promptBuilder.WriteString("You are a PromQL expert. Convert the natural language query to PromQL.\n\n")
+	promptBuilder.WriteString("IMPORTANT: Return ONLY the PromQL query. Do not include explanations, descriptions, or code blocks.\n\n")
 
 	// Add context about available services
 	if intent.Service != "" {
@@ -139,26 +140,27 @@ func (qp *QueryProcessor) buildPrompt(ctx context.Context, req *QueryRequest, in
 
 	// Add similar queries as examples
 	if len(similarQueries) > 0 {
-		promptBuilder.WriteString("Similar queries for reference:\n")
+		promptBuilder.WriteString("Examples:\n")
 		for _, sq := range similarQueries[:min(3, len(similarQueries))] {
-			promptBuilder.WriteString(fmt.Sprintf("- Query: %s\n  PromQL: %s\n", sq.Query, sq.PromQL))
+			promptBuilder.WriteString(fmt.Sprintf("Query: %s\nPromQL: %s\n\n", sq.Query, sq.PromQL))
 		}
-		promptBuilder.WriteString("\n")
 	}
 
 	// Add the main query
-	promptBuilder.WriteString(fmt.Sprintf("Query: %s\n", req.Query))
+	promptBuilder.WriteString(fmt.Sprintf("Query: %s\n\n", req.Query))
 
-	// Add extracted intent
-	promptBuilder.WriteString(fmt.Sprintf("Intent: %s\n", intent.Type))
+	// Add extracted intent for context
+	if intent.Type != "" {
+		promptBuilder.WriteString(fmt.Sprintf("Intent: %s\n", intent.Type))
+	}
 	if intent.Service != "" {
-		promptBuilder.WriteString(fmt.Sprintf("Service: %s\n", intent.Service))
+		promptBuilder.WriteString(fmt.Sprintf("Target Service: %s\n", intent.Service))
 	}
 	if intent.TimeRange != "" {
 		promptBuilder.WriteString(fmt.Sprintf("Time Range: %s\n", intent.TimeRange))
 	}
 
-	promptBuilder.WriteString("\nReturn only valid PromQL query. Focus on accuracy and performance.")
+	promptBuilder.WriteString("\nReturn only the PromQL query:")
 
 	return promptBuilder.String(), nil
 }

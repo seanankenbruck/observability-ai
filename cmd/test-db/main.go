@@ -16,7 +16,7 @@ func main() {
 	// Database configuration
 	config := semantic.PostgresConfig{
 		Host:     getEnv("DB_HOST", "localhost"),
-		Port:     getEnv("DB_PORT", "5432"),
+		Port:     getEnv("DB_PORT", "5433"),
 		Database: getEnv("DB_NAME", "observability_ai"),
 		Username: getEnv("DB_USER", "obs_ai"),
 		Password: getEnv("DB_PASSWORD", "changeme"),
