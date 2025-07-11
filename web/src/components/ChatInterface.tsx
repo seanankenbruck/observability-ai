@@ -9,6 +9,7 @@ interface ChatInterfaceProps {
   onClearChat: () => void;
   isLoading: boolean;
   services: Service[];
+  isServicesLoading?: boolean;
 }
 
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({
@@ -16,7 +17,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   onSendMessage,
   onClearChat,
   isLoading,
-  services,
+  services = [], // Default to empty array
+  isServicesLoading = false,
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -72,11 +74,19 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               </div>
             </div>
 
-            {services.length > 0 && (
+            {isServicesLoading ? (
+              <div className="text-sm text-gray-400">
+                <p>Loading services...</p>
+              </div>
+            ) : services && services.length > 0 ? (
               <div className="text-sm text-gray-400">
                 <p>Available services: {services.slice(0, 3).map(s => s.name).join(', ')}
                   {services.length > 3 && ` and ${services.length - 3} more`}
                 </p>
+              </div>
+            ) : (
+              <div className="text-sm text-gray-400">
+                <p>No services loaded yet</p>
               </div>
             )}
           </div>
@@ -109,7 +119,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         <QueryInput
           onSendMessage={onSendMessage}
           disabled={isLoading}
-          services={services}
+          services={services || []} // Ensure it's always an array
         />
       </div>
     </div>

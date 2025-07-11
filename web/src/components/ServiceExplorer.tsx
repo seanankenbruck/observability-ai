@@ -5,12 +5,14 @@ import { apiClient } from '../utils/api';
 interface ServiceExplorerProps {
   services: Service[];
   onRefresh: () => void;
+  isLoading?: boolean;
   onServiceSelect: (service: Service) => void;
 }
 
 export const ServiceExplorer: React.FC<ServiceExplorerProps> = ({
-  services,
+  services = [], // Default to empty array
   onRefresh,
+  isLoading = false,
   onServiceSelect,
 }) => {
   const [selectedService, setSelectedService] = useState<Service | null>(null);
@@ -29,25 +31,25 @@ export const ServiceExplorer: React.FC<ServiceExplorerProps> = ({
     setIsLoadingMetrics(true);
     try {
       const metricsData = await apiClient.getMetrics(serviceId);
-      setMetrics(metricsData);
+      setMetrics(metricsData || []); // Ensure it's always an array
     } catch (error) {
       console.error('Failed to load metrics:', error);
-      setMetrics([]);
+      setMetrics([]); // Set to empty array on error
     } finally {
       setIsLoadingMetrics(false);
     }
   };
 
-  const filteredServices = services.filter(service =>
+  const filteredServices = (services || []).filter(service =>
     service.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     service.namespace.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    Object.values(service.labels).some(label =>
+    (service.labels && Object.values(service.labels).some(label =>
       label.toLowerCase().includes(searchTerm.toLowerCase())
-    )
+    ))
   );
 
   const getServiceIcon = (service: Service) => {
-    const team = service.labels.team || '';
+    const team = (service.labels && service.labels.team) || '';
     switch (team.toLowerCase()) {
       case 'backend': return '🔧';
       case 'frontend': return '🎨';
@@ -78,9 +80,14 @@ export const ServiceExplorer: React.FC<ServiceExplorerProps> = ({
             <h2 className="text-lg font-semibold text-white">Services</h2>
             <button
               onClick={onRefresh}
-              className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+              disabled={isLoading}
+              className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                isLoading
+                  ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+              }`}
             >
-              🔄 Refresh
+              {isLoading ? '🔄 Loading...' : '🔄 Refresh'}
             </button>
           </div>
 
@@ -106,9 +113,30 @@ export const ServiceExplorer: React.FC<ServiceExplorerProps> = ({
 
         {/* Services List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
-          {filteredServices.length === 0 ? (
+          {isLoading ? (
             <div className="text-center py-8 text-gray-400">
-              {searchTerm ? 'No services match your search' : 'No services found'}
+              <div className="text-4xl mb-4">⏳</div>
+              <p>Loading services...</p>
+            </div>
+          ) : filteredServices.length === 0 ? (
+            <div className="text-center py-8 text-gray-400">
+              {searchTerm ? (
+                <>
+                  <div className="text-4xl mb-4">🔍</div>
+                  <p>No services match your search</p>
+                </>
+              ) : (
+                <>
+                  <div className="text-4xl mb-4">📦</div>
+                  <p>No services found</p>
+                  <button
+                    onClick={onRefresh}
+                    className="mt-2 text-blue-400 hover:text-blue-300 underline"
+                  >
+                    Try refreshing
+                  </button>
+                </>
+              )}
             </div>
           ) : (
             filteredServices.map((service) => (
@@ -131,13 +159,13 @@ export const ServiceExplorer: React.FC<ServiceExplorerProps> = ({
                       </span>
                     </div>
                     <div className="flex items-center space-x-4 mt-1">
-                      {service.labels.team && (
+                      {service.labels && service.labels.team && (
                         <span className="text-xs text-blue-400">
                           Team: {service.labels.team}
                         </span>
                       )}
                       <span className="text-xs text-gray-400">
-                        {service.metric_names.length} metrics
+                        {(service.metric_names || []).length} metrics
                       </span>
                     </div>
                   </div>
@@ -167,7 +195,7 @@ export const ServiceExplorer: React.FC<ServiceExplorerProps> = ({
               </div>
 
               {/* Labels */}
-              {Object.keys(selectedService.labels).length > 0 && (
+              {selectedService.labels && Object.keys(selectedService.labels).length > 0 && (
                 <div className="mb-4">
                   <h3 className="text-sm font-medium text-gray-400 mb-2">Labels:</h3>
                   <div className="flex flex-wrap gap-2">
@@ -205,7 +233,8 @@ export const ServiceExplorer: React.FC<ServiceExplorerProps> = ({
 
               {metrics.length === 0 && !isLoadingMetrics ? (
                 <div className="text-center py-8 text-gray-400">
-                  No metrics found for this service
+                  <div className="text-4xl mb-4">📊</div>
+                  <p>No metrics found for this service</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -230,7 +259,7 @@ export const ServiceExplorer: React.FC<ServiceExplorerProps> = ({
                               {metric.description}
                             </p>
                           )}
-                          {Object.keys(metric.labels).length > 0 && (
+                          {metric.labels && Object.keys(metric.labels).length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-2">
                               {Object.entries(metric.labels).map(([key, value]) => (
                                 <span

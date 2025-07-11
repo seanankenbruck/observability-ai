@@ -20,6 +20,7 @@ function App() {
   ]);
   const [services, setServices] = useState<Service[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isServicesLoading, setIsServicesLoading] = useState(true);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
 
   // Load services on mount
@@ -29,11 +30,13 @@ function App() {
   }, []);
 
   const loadServices = async () => {
+    setIsServicesLoading(true);
     try {
       const servicesData = await apiClient.getServices();
-      setServices(servicesData);
+      setServices(servicesData || []); // Ensure it's always an array
     } catch (error) {
       console.error('Failed to load services:', error);
+      setServices([]); // Set to empty array on error
       // Add error message to chat
       const errorMessage: ChatMessage = {
         id: Date.now().toString(),
@@ -43,6 +46,8 @@ function App() {
         error: error instanceof Error ? error.message : 'Unknown error',
       };
       setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsServicesLoading(false);
     }
   };
 
@@ -136,6 +141,7 @@ function App() {
               onClearChat={handleClearChat}
               isLoading={isLoading}
               services={services}
+              isServicesLoading={isServicesLoading}
             />
           )}
 
@@ -143,6 +149,7 @@ function App() {
             <ServiceExplorer
               services={services}
               onRefresh={loadServices}
+              isLoading={isServicesLoading}
               onServiceSelect={(service) => {
                 // Switch to chat and insert service query
                 setActiveTab('chat');
