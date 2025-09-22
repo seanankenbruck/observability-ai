@@ -238,24 +238,127 @@ func (qp *QueryProcessor) SetupRoutes() *gin.Engine {
 		c.JSON(http.StatusOK, gin.H{"status": "healthy"})
 	})
 
-	// Main query endpoint
-	r.POST("/api/v1/query", func(c *gin.Context) {
-		var req QueryRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
+	// API routes
+	api := r.Group("/api/v1")
+	{
+		// Main query endpoint
+		api.POST("/query", func(c *gin.Context) {
+			var req QueryRequest
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
 
-		response, err := qp.ProcessQuery(c.Request.Context(), &req)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
+			response, err := qp.ProcessQuery(c.Request.Context(), &req)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
 
-		c.JSON(http.StatusOK, response)
-	})
+			c.JSON(http.StatusOK, response)
+		})
+
+		// Services endpoints
+		api.GET("/services", qp.handleGetServices)
+		api.GET("/services/:id", qp.handleGetService)
+		api.GET("/services/search", qp.handleSearchServices)
+		api.GET("/services/:id/metrics", qp.handleGetServiceMetrics)
+
+		// Metrics endpoints
+		api.GET("/metrics", qp.handleGetAllMetrics)
+
+		// Future: Query suggestions
+		api.GET("/suggestions", qp.handleGetSuggestions)
+	}
+
+	// Serve static files for the web interface (in production)
+	r.Static("/static", "./web/dist/assets")
+	r.StaticFile("/", "./web/dist/index.html")
 
 	return r
+}
+
+// Service-related handlers
+func (qp *QueryProcessor) handleGetServices(c *gin.Context) {
+	services, err := qp.semanticMapper.GetServices(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, services)
+}
+
+func (qp *QueryProcessor) handleGetService(c *gin.Context) {
+	serviceID := c.Param("id")
+	// For now, we'll search by name since that's what we have
+	service, err := qp.semanticMapper.GetServiceByName(c.Request.Context(), serviceID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
+		return
+	}
+	c.JSON(http.StatusOK, service)
+}
+
+func (qp *QueryProcessor) handleSearchServices(c *gin.Context) {
+	query := c.Query("q")
+	if query == "" {
+		qp.handleGetServices(c)
+		return
+	}
+
+	services, err := qp.semanticMapper.SearchServices(c.Request.Context(), query)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, services)
+}
+
+func (qp *QueryProcessor) handleGetServiceMetrics(c *gin.Context) {
+	serviceID := c.Param("id")
+	metrics, err := qp.semanticMapper.GetMetrics(c.Request.Context(), serviceID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, metrics)
+}
+
+func (qp *QueryProcessor) handleGetAllMetrics(c *gin.Context) {
+	// Get all services first, then get metrics for each
+	services, err := qp.semanticMapper.GetServices(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	var allMetrics []interface{}
+	for _, service := range services {
+		metrics, err := qp.semanticMapper.GetMetrics(c.Request.Context(), service.ID)
+		if err != nil {
+			continue // Skip services with metric errors
+		}
+		for _, metric := range metrics {
+			allMetrics = append(allMetrics, metric)
+		}
+	}
+
+	c.JSON(http.StatusOK, allMetrics)
+}
+
+func (qp *QueryProcessor) handleGetSuggestions(c *gin.Context) {
+	query := c.Query("q")
+
+	// For now, return some basic suggestions
+	// In the future, this could use the semantic mapper to find similar queries
+	suggestions := []string{
+		"Show error rate for " + query,
+		"What's the latency for " + query,
+		"Requests per second for " + query,
+		"Memory usage for " + query,
+	}
+
+	c.JSON(http.StatusOK, suggestions)
 }
 
 // Utility function

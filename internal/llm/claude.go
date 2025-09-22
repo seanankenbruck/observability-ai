@@ -77,7 +77,7 @@ func NewClaudeClient(apiKey, model string) (*ClaudeClient, error) {
 	}
 
 	if model == "" {
-		model = "claude-3-haiku-20240307" // Default to Claude 3 Sonnet
+		model = "claude-3-5-sonnet-20241022" // Default to Claude 3.5 Sonnet (latest)
 	}
 
 	return &ClaudeClient{
@@ -187,38 +187,108 @@ func (c *ClaudeClient) parseClaudeResponse(response *ClaudeResponse) (promql, ex
 	text := response.Content[0].Text
 
 	// Try to extract PromQL query from the response
-	// Look for common PromQL patterns
-	promqlRegex := regexp.MustCompile(`(?m)^([a-zA-Z_][a-zA-Z0-9_]*(\{[^}]*\})?(\[[^\]]+\])?(\s*[+\-*/]\s*[a-zA-Z_][a-zA-Z0-9_]*(\{[^}]*\})?(\[[^\]]+\])?)*|rate\(.*?\)|sum\(.*?\)|avg\(.*?\)|histogram_quantile\(.*?\))`)
-
-	// Also look for code blocks or explicit PromQL markers
+	// Look for code blocks first (most reliable)
 	codeBlockRegex := regexp.MustCompile("```(?:promql)?\n?(.*?)\n?```")
-
-	var extractedPromQL string
-
-	// First try to find PromQL in code blocks
 	if matches := codeBlockRegex.FindStringSubmatch(text); len(matches) > 1 {
-		extractedPromQL = strings.TrimSpace(matches[1])
-	} else if matches := promqlRegex.FindString(text); matches != "" {
-		extractedPromQL = strings.TrimSpace(matches)
-	} else {
-		// Fallback: look for anything that looks like a metric query
-		lines := strings.Split(text, "\n")
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if strings.Contains(line, "{") && strings.Contains(line, "}") && !strings.HasPrefix(line, "#") {
-				extractedPromQL = line
-				break
-			}
+		extractedPromQL := strings.TrimSpace(matches[1])
+		confidence := c.calculateConfidence(text, extractedPromQL)
+		explanation := c.cleanExplanation(text, extractedPromQL)
+		return extractedPromQL, explanation, confidence
+	}
+
+	// Look for lines that start with metric names or functions - but get the FULL query
+	lines := strings.Split(text, "\n")
+	var promqlLines []string
+	var inPromQL bool
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
+			continue
+		}
+
+		// Check if line looks like PromQL
+		if c.looksLikePromQLLine(line) {
+			inPromQL = true
+			promqlLines = append(promqlLines, line)
+		} else if inPromQL {
+			// If we were in PromQL and this line doesn't look like PromQL, we're done
+			break
 		}
 	}
 
-	// Calculate confidence based on response quality
-	confidence = c.calculateConfidence(text, extractedPromQL)
+	if len(promqlLines) > 0 {
+		extractedPromQL := strings.Join(promqlLines, " ")
+		confidence := c.calculateConfidence(text, extractedPromQL)
+		explanation := c.cleanExplanation(text, extractedPromQL)
+		return extractedPromQL, explanation, confidence
+	}
 
-	// Use the full text as explanation, but clean it up
-	explanation = c.cleanExplanation(text, extractedPromQL)
+	// Try to find multi-line PromQL expressions
+	multiLineRegex := regexp.MustCompile(`(?s)\b(?:rate|sum|avg|histogram_quantile|increase|max|min)\s*\([^)]*\)[^.]*`)
+	if matches := multiLineRegex.FindAllString(text, -1); len(matches) > 0 {
+		// Take the longest match (most likely to be complete)
+		longestMatch := ""
+		for _, match := range matches {
+			if len(match) > len(longestMatch) {
+				longestMatch = match
+			}
+		}
+		extractedPromQL := strings.TrimSpace(longestMatch)
+		confidence := c.calculateConfidence(text, extractedPromQL)
+		explanation := c.cleanExplanation(text, extractedPromQL)
+		return extractedPromQL, explanation, confidence
+	}
 
-	return extractedPromQL, explanation, confidence
+	// Last resort: try to find anything that contains metric patterns
+	promqlRegex := regexp.MustCompile(`[a-zA-Z_][a-zA-Z0-9_]*\{[^}]*\}(?:\[[^\]]+\])?`)
+	if matches := promqlRegex.FindString(text); matches != "" {
+		// Try to expand to include surrounding context
+		expandedRegex := regexp.MustCompile(`(?:rate|sum|avg|histogram_quantile|increase|max|min)\([^)]*` + regexp.QuoteMeta(matches) + `[^)]*\)|` + regexp.QuoteMeta(matches))
+		if expandedMatch := expandedRegex.FindString(text); expandedMatch != "" {
+			confidence := c.calculateConfidence(text, expandedMatch)
+			explanation := c.cleanExplanation(text, expandedMatch)
+			return expandedMatch, explanation, confidence
+		}
+	}
+
+	// If we still haven't found anything, return the first substantial line
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if len(line) > 10 && !strings.Contains(strings.ToLower(line), "here") && !strings.Contains(strings.ToLower(line), "query") {
+			confidence := 0.3 // Low confidence for fallback
+			explanation := c.cleanExplanation(text, line)
+			return line, explanation, confidence
+		}
+	}
+
+	// Final fallback - return the full text as PromQL with very low confidence
+	confidence = 0.1 // Very low confidence for this fallback
+	explanation = c.cleanExplanation(text, text)
+	return strings.TrimSpace(text), explanation, confidence
+}
+
+// looksLikePromQLLine checks if a line looks like valid PromQL
+func (c *ClaudeClient) looksLikePromQLLine(line string) bool {
+	// Must contain either metric name patterns or PromQL functions
+	hasMetricPattern := regexp.MustCompile(`[a-zA-Z_][a-zA-Z0-9_]*(\{[^}]*\})?`).MatchString(line)
+	hasPromQLFunction := regexp.MustCompile(`(?:rate|sum|avg|histogram_quantile|increase|max|min|count)\s*\(`).MatchString(line)
+	hasArithmetic := regexp.MustCompile(`[\+\-\*/]`).MatchString(line)
+
+	// Should not contain common explanation words
+	explanationWords := []string{"this query", "the query", "here is", "you can", "to get", "will show", "returns", "this will"}
+	for _, word := range explanationWords {
+		if strings.Contains(strings.ToLower(line), word) {
+			return false
+		}
+	}
+
+	// Should be reasonably short (most PromQL queries are under 300 chars per line)
+	if len(line) > 400 {
+		return false
+	}
+
+	return hasMetricPattern || hasPromQLFunction || (hasArithmetic && len(line) > 5)
 }
 
 // calculateConfidence estimates how confident we are in the response
