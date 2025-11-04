@@ -10,6 +10,9 @@ prometheus-config.yaml
 # Ignore compiled binaries
 bin/
 
+# Ignore go build output
+query-processor
+
 # Ignore node dependencies
 node_modules/
 
