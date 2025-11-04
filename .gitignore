@@ -3,6 +3,10 @@
 .env.*
 deploy/configs/development.env
 
+# Ignore local development configs (use .example versions)
+mimir-config.yaml
+prometheus-config.yaml
+
 # Ignore compiled binaries
 bin/
 

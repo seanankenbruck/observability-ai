@@ -8,7 +8,7 @@ import (
 type Mapper interface {
 	// Service operations
 	GetServices(ctx context.Context) ([]Service, error)
-	GetServiceByName(ctx context.Context, name string) (*Service, error)
+	GetServiceByName(ctx context.Context, name, namespace string) (*Service, error)
 	CreateService(ctx context.Context, name, namespace string, labels map[string]string) (*Service, error)
 	UpdateServiceMetrics(ctx context.Context, serviceID string, metrics []string) error
 	DeleteService(ctx context.Context, serviceID string) error
