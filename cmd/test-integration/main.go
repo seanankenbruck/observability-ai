@@ -233,7 +233,7 @@ func setupTestData(ctx context.Context, mapper semantic.Mapper) error {
 
 	for _, svc := range testServices {
 		// Check if service already exists
-		existing, err := mapper.GetServiceByName(ctx, svc.name)
+		existing, err := mapper.GetServiceByName(ctx, svc.name, "default")
 		if err == nil && existing != nil {
 			continue // Service already exists
 		}

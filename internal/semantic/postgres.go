@@ -222,18 +222,18 @@ func (pm *PostgresMapper) FindSimilarQueries(ctx context.Context, embedding []fl
 }
 
 // GetServiceByName retrieves a service by name
-func (pm *PostgresMapper) GetServiceByName(ctx context.Context, name string) (*Service, error) {
+func (pm *PostgresMapper) GetServiceByName(ctx context.Context, name, namespace string) (*Service, error) {
 	query := `
 		SELECT id, name, namespace, labels, metric_names, created_at, updated_at
 		FROM services
-		WHERE LOWER(name) = LOWER($1)
+		WHERE LOWER(name) = LOWER($1) AND LOWER(namespace) = LOWER($2)
 		LIMIT 1
 	`
 
 	var service Service
 	var labelsJSON, metricNamesJSON sql.NullString
 
-	err := pm.db.QueryRowContext(ctx, query, name).Scan(
+	err := pm.db.QueryRowContext(ctx, query, name, namespace).Scan(
 		&service.ID,
 		&service.Name,
 		&service.Namespace,

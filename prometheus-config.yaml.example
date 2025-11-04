@@ -1,0 +1,83 @@
+# Prometheus Configuration Example for Local Development and Testing
+#
+# PRODUCTION USERS: You don't need this file! Your existing Prometheus
+# instance should already be configured to remote-write to Mimir.
+#
+# LOCAL DEVELOPMENT: This config helps you test service discovery locally by:
+# 1. Scraping metrics from Prometheus itself and Mimir
+# 2. Creating mock service targets with appropriate labels for discovery testing
+# 3. Remote writing all metrics to Mimir for service discovery
+#
+# The mock services (localhost:8081-8084) don't need to be running -
+# Prometheus will still create 'up' metrics with the labels, which is
+# enough for the discovery service to find them.
+#
+# To use: cp prometheus-config.yaml.example prometheus-config.yaml
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Remote write to Mimir
+remote_write:
+  - url: http://localhost:9009/api/v1/push
+    headers:
+      X-Scope-OrgID: demo
+
+# Scrape configurations
+scrape_configs:
+  # Scrape Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+          namespace: 'monitoring'
+
+  # Scrape Mimir
+  - job_name: 'mimir'
+    static_configs:
+      - targets: ['localhost:9009']
+        labels:
+          service: 'mimir'
+          namespace: 'monitoring'
+
+  # Mock application services for testing discovery
+  - job_name: 'auth-service'
+    static_configs:
+      - targets: ['localhost:8081']  # Fake endpoint - will show as down but creates metrics
+        labels:
+          service: 'auth-service'
+          namespace: 'production'
+          app: 'auth'
+
+  - job_name: 'database-service'
+    static_configs:
+      - targets: ['localhost:8082']
+        labels:
+          service: 'database-service'
+          namespace: 'production'
+          app: 'database'
+
+  - job_name: 'api-gateway'
+    static_configs:
+      - targets: ['localhost:8083']
+        labels:
+          job: 'api-gateway'
+          namespace: 'production'
+          app: 'gateway'
+
+  - job_name: 'redis-cache'
+    static_configs:
+      - targets: ['localhost:8084']
+        labels:
+          app: 'redis-cache'
+          namespace: 'default'
+
+  - job_name: 'query-processor'
+    static_configs:
+      - targets: ['localhost:8080']  # Your actual backend
+        labels:
+          service: 'query-processor'
+          namespace: 'production'
+          app: 'observability'

@@ -132,7 +132,7 @@ func (qp *QueryProcessor) buildPrompt(ctx context.Context, req *QueryRequest, in
 
 	// Add context about available services
 	if intent.Service != "" {
-		if service, err := qp.semanticMapper.GetServiceByName(ctx, intent.Service); err == nil {
+		if service, err := qp.semanticMapper.GetServiceByName(ctx, intent.Service, "default"); err == nil {
 			promptBuilder.WriteString(fmt.Sprintf("Service Context:\n- Name: %s\n- Namespace: %s\n- Available metrics: %v\n\n",
 				service.Name, service.Namespace, service.MetricNames))
 		}
@@ -291,7 +291,7 @@ func (qp *QueryProcessor) handleGetServices(c *gin.Context) {
 func (qp *QueryProcessor) handleGetService(c *gin.Context) {
 	serviceID := c.Param("id")
 	// For now, we'll search by name since that's what we have
-	service, err := qp.semanticMapper.GetServiceByName(c.Request.Context(), serviceID)
+	service, err := qp.semanticMapper.GetServiceByName(c.Request.Context(), serviceID, "default")
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
 		return
