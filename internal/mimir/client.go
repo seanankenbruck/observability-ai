@@ -269,7 +269,7 @@ func (c *Client) GetMetricMetadata(ctx context.Context, metricName string) (*Met
 	}
 
 	var result struct {
-		Status string                       `json:"status"`
+		Status string                      `json:"status"`
 		Data   map[string][]MetricMetadata `json:"data"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
