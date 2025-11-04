@@ -132,7 +132,7 @@ func (qp *QueryProcessor) buildPrompt(ctx context.Context, req *QueryRequest, in
 
 	// Add context about available services
 	if intent.Service != "" {
-		if service, err := qp.semanticMapper.GetServiceByName(ctx, intent.Service); err == nil {
+		if service, err := qp.semanticMapper.GetServiceByName(ctx, intent.Service, "default"); err == nil {
 			promptBuilder.WriteString(fmt.Sprintf("Service Context:\n- Name: %s\n- Namespace: %s\n- Available metrics: %v\n\n",
 				service.Name, service.Namespace, service.MetricNames))
 		}
@@ -215,8 +215,13 @@ func (qp *QueryProcessor) cacheResult(ctx context.Context, query string, respons
 	return qp.cache.Set(ctx, key, data, 5*time.Minute).Err()
 }
 
-// SetupRoutes configures HTTP routes
-func (qp *QueryProcessor) SetupRoutes() *gin.Engine {
+// AuthMiddleware is an interface for authentication middleware
+type AuthMiddleware interface {
+	Middleware() gin.HandlerFunc
+}
+
+// SetupRoutes configures HTTP routes with optional authentication
+func (qp *QueryProcessor) SetupRoutes(authMiddleware AuthMiddleware) *gin.Engine {
 	r := gin.Default()
 
 	// Add CORS middleware
@@ -233,13 +238,32 @@ func (qp *QueryProcessor) SetupRoutes() *gin.Engine {
 		c.Next()
 	})
 
-	// Health check
+	// Public health check endpoint
 	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "healthy"})
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "healthy",
+			"version": "1.0.0",
+			"service": "query-processor",
+		})
 	})
 
-	// API routes
+	// Public API v1 health endpoint
+	publicAPI := r.Group("/api/v1")
+	{
+		publicAPI.GET("/health", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{
+				"status":  "healthy",
+				"version": "1.0.0",
+				"service": "query-processor",
+			})
+		})
+	}
+
+	// Protected API routes (require authentication)
 	api := r.Group("/api/v1")
+	if authMiddleware != nil {
+		api.Use(authMiddleware.Middleware())
+	}
 	{
 		// Main query endpoint
 		api.POST("/query", func(c *gin.Context) {
@@ -267,7 +291,10 @@ func (qp *QueryProcessor) SetupRoutes() *gin.Engine {
 		// Metrics endpoints
 		api.GET("/metrics", qp.handleGetAllMetrics)
 
-		// Future: Query suggestions
+		// Query history endpoint
+		api.GET("/history", qp.handleGetHistory)
+
+		// Query suggestions
 		api.GET("/suggestions", qp.handleGetSuggestions)
 	}
 
@@ -291,7 +318,7 @@ func (qp *QueryProcessor) handleGetServices(c *gin.Context) {
 func (qp *QueryProcessor) handleGetService(c *gin.Context) {
 	serviceID := c.Param("id")
 	// For now, we'll search by name since that's what we have
-	service, err := qp.semanticMapper.GetServiceByName(c.Request.Context(), serviceID)
+	service, err := qp.semanticMapper.GetServiceByName(c.Request.Context(), serviceID, "default")
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
 		return
@@ -359,6 +386,24 @@ func (qp *QueryProcessor) handleGetSuggestions(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, suggestions)
+}
+
+func (qp *QueryProcessor) handleGetHistory(c *gin.Context) {
+	// For now, we'll use an empty embedding to get all queries
+	// In a real implementation, you might want to add a GetRecentQueries method
+	// or filter by user ID from the auth context
+	emptyEmbedding := make([]float32, 1536) // Claude embedding size
+
+	queries, err := qp.semanticMapper.FindSimilarQueries(c.Request.Context(), emptyEmbedding)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"queries": queries,
+		"count":   len(queries),
+	})
 }
 
 // Utility function

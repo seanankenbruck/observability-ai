@@ -245,7 +245,7 @@ func testServiceQueries(ctx context.Context, mapper semantic.Mapper) error {
 
 	// Test GetServiceByName
 	if len(services) > 0 {
-		service, err := mapper.GetServiceByName(ctx, services[0].Name)
+		service, err := mapper.GetServiceByName(ctx, services[0].Name, services[0].Namespace)
 		if err != nil {
 			return fmt.Errorf("GetServiceByName failed: %w", err)
 		}
