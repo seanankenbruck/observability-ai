@@ -97,18 +97,12 @@ func main() {
 	// Create query processor
 	qp := processor.NewQueryProcessor(llmClient, semanticMapper, rdb)
 
-	// Setup Gin router
-	router := qp.SetupRoutes()
+	// Setup Gin router with authentication
+	router := qp.SetupRoutes(authManager)
 
-	// Add auth handlers
+	// Add auth handlers for login/logout/user management
 	authHandlers := auth.NewAuthHandlers(authManager)
 	authHandlers.SetupRoutes(router.Group("/api/v1"))
-
-	// Apply auth middleware to protected routes
-	// Note: Health endpoints are already excluded in middleware
-	protected := router.Group("/api/v1")
-	protected.Use(authManager.Middleware())
-	// Your protected routes will use this group
 
 	port := getEnv("PORT", "8080")
 	log.Printf("Query processor starting on port %s", port)
