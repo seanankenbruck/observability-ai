@@ -3,12 +3,15 @@ import { ChatInterface } from './components/ChatInterface';
 import { ServiceExplorer } from './components/ServiceExplorer';
 import { QueryHistory } from './components/QueryHistory';
 import { Header } from './components/Header';
+import { Login } from './components/Login';
 import { ChatMessage, Service } from './types/api';
 import { apiClient } from './utils/api';
+import { useAuth } from './contexts/AuthContext';
 
 type ActiveTab = 'chat' | 'services' | 'history';
 
 function App() {
+  const { isAuthenticated, isLoading: authLoading, token, logout, user } = useAuth();
   const [activeTab, setActiveTab] = useState<ActiveTab>('chat');
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -23,11 +26,18 @@ function App() {
   const [isServicesLoading, setIsServicesLoading] = useState(true);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
 
-  // Load services on mount
+  // Setup API client with token getter
   useEffect(() => {
-    loadServices();
-    checkConnection();
-  }, []);
+    apiClient.setTokenGetter(() => token);
+  }, [token]);
+
+  // Load services on mount (only when authenticated)
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadServices();
+      checkConnection();
+    }
+  }, [isAuthenticated]);
 
   const loadServices = async () => {
     setIsServicesLoading(true);
@@ -123,6 +133,34 @@ function App() {
     checkConnection();
   };
 
+  const handleLogout = () => {
+    logout();
+    setMessages([
+      {
+        id: '1',
+        type: 'system',
+        content: 'Welcome to Observability AI! Ask me about your metrics in natural language, and I\'ll convert it to PromQL.',
+        timestamp: new Date(),
+      },
+    ]);
+    setServices([]);
+    setActiveTab('chat');
+  };
+
+  // Show loading screen while checking authentication
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-white text-lg">Loading...</div>
+      </div>
+    );
+  }
+
+  // Show login screen if not authenticated
+  if (!isAuthenticated) {
+    return <Login />;
+  }
+
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       <Header
@@ -130,6 +168,8 @@ function App() {
         onTabChange={setActiveTab}
         connectionStatus={connectionStatus}
         onRetryConnection={handleRetryConnection}
+        onLogout={handleLogout}
+        user={user}
       />
 
       <main className="container mx-auto px-4 py-6 max-w-7xl">
