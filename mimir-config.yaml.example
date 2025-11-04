@@ -1,0 +1,48 @@
+# Mimir Configuration Example for Local Development
+#
+# This is an EXAMPLE configuration for running Mimir locally for testing.
+#
+# PRODUCTION USERS: You don't need this file! Instead, configure your
+# application to connect to your existing Mimir instance via environment variables:
+#   MIMIR_ENDPOINT=https://your-mimir-instance.com
+#   MIMIR_AUTH_TYPE=bearer
+#   MIMIR_BEARER_TOKEN=your-token
+#   MIMIR_TENANT_ID=your-org-id
+#
+# LOCAL DEVELOPMENT: Copy this file to mimir-config.yaml and use it with:
+#   cp mimir-config.yaml.example mimir-config.yaml
+#   docker run -v $(pwd)/mimir-config.yaml:/etc/mimir/config.yaml ...
+#
+target: all
+
+server:
+  http_listen_port: 9009
+  log_level: info
+
+common:
+  storage:
+    backend: filesystem
+    filesystem:
+      dir: /data/mimir
+
+blocks_storage:
+  backend: filesystem
+  filesystem:
+    dir: /data/mimir/blocks
+
+ruler_storage:
+  backend: filesystem
+  filesystem:
+    dir: /data/mimir/rules
+
+alertmanager_storage:
+  backend: filesystem
+  filesystem:
+    dir: /data/mimir/alertmanager
+
+compactor:
+  data_dir: /data/mimir/compactor
+
+ingester:
+  ring:
+    replication_factor: 1

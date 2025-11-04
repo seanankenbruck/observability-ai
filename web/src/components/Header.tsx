@@ -1,4 +1,5 @@
 import React from 'react';
+import { User } from '../types/api';
 
 type ActiveTab = 'chat' | 'services' | 'history';
 type ConnectionStatus = 'connected' | 'disconnected' | 'connecting';
@@ -8,6 +9,8 @@ interface HeaderProps {
   onTabChange: (tab: ActiveTab) => void;
   connectionStatus: ConnectionStatus;
   onRetryConnection: () => void;
+  onLogout?: () => void;
+  user?: User | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -15,6 +18,8 @@ export const Header: React.FC<HeaderProps> = ({
   onTabChange,
   connectionStatus,
   onRetryConnection,
+  onLogout,
+  user,
 }) => {
   const getStatusColor = () => {
     switch (connectionStatus) {
@@ -89,6 +94,18 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Actions */}
           <div className="flex items-center space-x-2">
+            {user && (
+              <div className="flex items-center space-x-3 px-3 py-1 bg-gray-700 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                    <span className="text-xs font-bold text-white">
+                      {user.username.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <span className="text-sm text-gray-300">{user.username}</span>
+                </div>
+              </div>
+            )}
             <button
               className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
               title="Settings"
@@ -101,6 +118,15 @@ export const Header: React.FC<HeaderProps> = ({
             >
               ❓
             </button>
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                className="px-3 py-1 text-sm text-red-400 hover:text-red-300 hover:bg-gray-700 rounded-lg transition-colors"
+                title="Logout"
+              >
+                Logout
+              </button>
+            )}
           </div>
         </div>
       </div>
