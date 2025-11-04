@@ -75,3 +75,28 @@ export interface QueryRequest {
     timestamp: Date;
     processing_time?: number;
   }
+
+  // Authentication types
+  export interface User {
+    id: string;
+    username: string;
+    email: string;
+    roles: string[];
+    active: boolean;
+  }
+
+  export interface LoginRequest {
+    username: string;
+    password: string;
+  }
+
+  export interface LoginResponse {
+    token: string;
+    expires_at: string;
+    user: User;
+  }
+
+  export interface AuthStatus {
+    authenticated: boolean;
+    user?: User;
+  }
