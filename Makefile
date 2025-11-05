@@ -109,6 +109,7 @@ stop: ## Stop all services
 	docker-compose -f docker-compose.test.yml down
 	docker-compose down 2>/dev/null || true
 	@pkill -f "query-processor" || true
+	@pkill -f "cmd/query-processor/main.go" || true
 	@pkill -f "npm run dev" || true
 	@echo "All services stopped"
 
