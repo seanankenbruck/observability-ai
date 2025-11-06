@@ -58,7 +58,7 @@ A natural language interface for querying Prometheus/Mimir metrics. Ask question
 
 ```bash
 # 1. Clone and configure
-git clone https://github.com/yourusername/observability-ai.git
+git clone https://github.com/seanankenbruck/observability-ai.git
 cd observability-ai
 cp .env.example .env
 # Edit .env and add your Claude API key

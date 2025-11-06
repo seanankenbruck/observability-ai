@@ -42,7 +42,7 @@ docker-compose --version
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/yourusername/observability-ai.git
+git clone https://github.com/seanankenbruck/observability-ai.git
 cd observability-ai
 
 # 2. Copy the example environment file
