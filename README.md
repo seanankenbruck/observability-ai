@@ -12,6 +12,9 @@ Observability AI converts natural language queries into PromQL using Claude AI, 
 - Query caching and history
 - Safety validation for queries
 - React-based web UI
+- Automatic service discovery from Prometheus/Mimir
+- API key authentication and management
+- Rate limiting and usage tracking
 
 ## Architecture
 
@@ -133,11 +136,25 @@ REDIS_PASSWORD=changeme
 
 # Claude API Configuration (REQUIRED)
 CLAUDE_API_KEY=sk-ant-...  # Get from https://console.anthropic.com/
-CLAUDE_MODEL=claude-3-haiku-20240307
+CLAUDE_MODEL=claude-3-haiku-20240307 # Alias or API model name
 
 # Server Configuration
 PORT=8080
 GIN_MODE=debug            # Use 'release' for production
+
+# Service Discovery Configuration
+DISCOVERY_ENABLED=true
+DISCOVERY_INTERVAL=5m     # How often to discover services/metrics
+MIMIR_URL=http://localhost:9009  # Your Prometheus/Mimir endpoint
+
+# Authentication Configuration
+AUTH_ENABLED=true         # Enable API key authentication
+JWT_SECRET=your-secret-key-here
+
+# Rate Limiting Configuration
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_REQUESTS=100   # Requests per window
+RATE_LIMIT_WINDOW=1h      # Time window for rate limiting
 ```
 
 ## Available Make Commands
@@ -185,10 +202,10 @@ observability-ai/
 ├── cmd/
 │   ├── query-processor/    # Main HTTP API server
 │   ├── migrate/            # Database migration tool
-│   ├── test-db/            # Database test utility
-│   ├── test-integration/   # Integration tests
-│   └── test-llm/           # LLM client tests
+│   └── test-db/            # Database test utility
 ├── internal/
+│   ├── auth/               # Authentication handlers
+│   ├── database/           # Reusable database utilities
 │   ├── llm/                # Claude API client
 │   ├── processor/          # Query processing & safety
 │   ├── semantic/           # Semantic mapping (PostgreSQL)
@@ -213,17 +230,320 @@ observability-ai/
 
 Once running, the backend exposes:
 
-- `GET /health` - Health check
+### Public Endpoints
+- `GET /health` - Global health check
+- `GET /api/v1/health` - API endpoint health check
+- `POST /auth/register` - Register new user
+- `POST /auth/login` - Login and get JWT token
+
+### Protected Endpoints (Require Authentication)
 - `POST /query` - Process natural language query
 - `GET /history` - Query history
 - `GET /services` - List available services
 - `GET /metrics` - List available metrics
 
-Example query:
+### Admin Endpoints (Require Admin Role)
+- `GET /admin/api-keys` - List all API keys
+- `POST /admin/api-keys` - Create new API key
+- `PUT /admin/api-keys/:id` - Update API key
+- `DELETE /admin/api-keys/:id` - Delete API key
+- `GET /admin/users/:id/usage` - Get user usage statistics
+- `POST /admin/discovery/trigger` - Manually trigger service discovery
+
+Example authenticated query:
 ```bash
+# First, login to get a token
+TOKEN=$(curl -X POST http://localhost:8080/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "your-password"}' \
+  | jq -r '.token')
+
+# Then use the token for API requests
 curl -X POST http://localhost:8080/query \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{"query": "What is the CPU usage for the auth service?"}'
+```
+
+## Service Discovery Setup
+
+Observability AI can automatically discover services and metrics from your Prometheus/Mimir instance, eliminating the need for manual configuration.
+
+### Configuration
+
+Enable service discovery in your `.env` file:
+
+```bash
+DISCOVERY_ENABLED=true
+DISCOVERY_INTERVAL=5m
+MIMIR_URL=http://localhost:9009
+```
+
+### How It Works
+
+1. **Automatic Discovery**: The system periodically queries your Prometheus/Mimir endpoint for all available metrics
+2. **Service Extraction**: Services are identified from metric labels (typically `service`, `job`, or `app` labels)
+3. **Metric Cataloging**: All discovered metrics are stored in the semantic database with their labels
+4. **Semantic Mapping**: Metrics are automatically mapped for natural language queries
+
+### Manual Trigger
+
+You can manually trigger a discovery run:
+
+```bash
+# Using the admin API
+curl -X POST http://localhost:8080/admin/discovery/trigger \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# Or check discovery status
+curl http://localhost:8080/admin/discovery/status \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+### Discovery Process
+
+The discovery service:
+- Runs on startup and then at configured intervals
+- Queries Prometheus/Mimir for all time series metadata
+- Extracts service names from label patterns
+- Stores metrics and their relationships in PostgreSQL
+- Updates semantic embeddings for improved query matching
+
+### Monitored Services
+
+View discovered services:
+
+```bash
+# List all discovered services
+curl http://localhost:8080/services \
+  -H "Authorization: Bearer $TOKEN"
+
+# List all discovered metrics
+curl http://localhost:8080/metrics \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+## Authentication Configuration
+
+The system uses JWT-based authentication with role-based access control (RBAC).
+
+### User Roles
+
+- **User**: Can query metrics and view history
+- **Admin**: Full system access including API key management and user administration
+
+### Initial Setup
+
+1. **Configure authentication** in `.env`:
+
+```bash
+AUTH_ENABLED=true
+JWT_SECRET=your-secure-secret-key-here
+```
+
+2. **Create the admin user**:
+
+```bash
+# The system creates a default admin user on first run
+# Username: admin
+# Password: Check logs or set via environment variable
+```
+
+3. **Login to get JWT token**:
+
+```bash
+TOKEN=$(curl -X POST http://localhost:8080/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "your-password"}' \
+  | jq -r '.token')
+```
+
+### User Registration
+
+Register new users via the API:
+
+```bash
+curl -X POST http://localhost:8080/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "new-user",
+    "password": "secure-password",
+    "email": "user@example.com"
+  }'
+```
+
+### Token Usage
+
+Include the JWT token in the `Authorization` header for all protected endpoints:
+
+```bash
+curl -X POST http://localhost:8080/query \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "show me CPU usage"}'
+```
+
+### Token Expiration
+
+- Default token lifetime: 24 hours
+- Refresh tokens before expiration by logging in again
+- The system returns token expiration time in the login response
+
+## API Key Management
+
+Administrators can create API keys for programmatic access and service accounts.
+
+### Creating API Keys
+
+```bash
+# Create a new API key
+curl -X POST http://localhost:8080/admin/api-keys \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Production Service",
+    "description": "API key for production monitoring service",
+    "expires_at": "2025-12-31T23:59:59Z",
+    "rate_limit": 1000
+  }'
+```
+
+Response:
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "key": "obs_ai_1234567890abcdef",
+  "name": "Production Service",
+  "created_at": "2025-01-15T10:00:00Z",
+  "expires_at": "2025-12-31T23:59:59Z"
+}
+```
+
+**Important**: Save the API key immediately - it's only shown once!
+
+### Using API Keys
+
+API keys can be used instead of JWT tokens:
+
+```bash
+curl -X POST http://localhost:8080/query \
+  -H "X-API-Key: obs_ai_1234567890abcdef" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What is memory usage?"}'
+```
+
+### Managing API Keys
+
+```bash
+# List all API keys
+curl http://localhost:8080/admin/api-keys \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# Update an API key
+curl -X PUT http://localhost:8080/admin/api-keys/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Updated Name",
+    "rate_limit": 2000
+  }'
+
+# Revoke an API key
+curl -X DELETE http://localhost:8080/admin/api-keys/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+### API Key Features
+
+- **Named keys**: Assign meaningful names for easy identification
+- **Expiration dates**: Set automatic expiration for security
+- **Per-key rate limits**: Configure different limits for different consumers
+- **Usage tracking**: Monitor API key usage and statistics
+- **Instant revocation**: Delete keys immediately when compromised
+
+## Rate Limiting
+
+Rate limiting prevents abuse and ensures fair resource allocation across users and API keys.
+
+### Configuration
+
+Configure rate limiting in `.env`:
+
+```bash
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_REQUESTS=100
+RATE_LIMIT_WINDOW=1h
+```
+
+### Rate Limit Tiers
+
+Different rate limits apply based on authentication method:
+
+| Authentication | Default Limit | Window | Notes |
+|----------------|---------------|--------|-------|
+| API Keys | Per-key config | 1 hour | Set during key creation |
+| JWT (User) | 100 requests | 1 hour | Per user account |
+| JWT (Admin) | 1000 requests | 1 hour | Elevated limits |
+
+### Rate Limit Headers
+
+All API responses include rate limit information:
+
+```http
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 95
+X-RateLimit-Reset: 1642348800
+```
+
+### Handling Rate Limits
+
+When rate limited, the API returns HTTP 429:
+
+```json
+{
+  "error": "rate limit exceeded",
+  "retry_after": 3600,
+  "limit": 100,
+  "window": "1h"
+}
+```
+
+### Usage Monitoring
+
+Administrators can monitor usage:
+
+```bash
+# Get usage statistics for a user
+curl http://localhost:8080/admin/users/USER_ID/usage \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+Response:
+```json
+{
+  "user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "total_requests": 1234,
+  "current_window": {
+    "requests": 45,
+    "limit": 100,
+    "remaining": 55,
+    "reset_at": "2025-01-15T11:00:00Z"
+  },
+  "last_24h": 523,
+  "last_7d": 2841
+}
+```
+
+### Adjusting Rate Limits
+
+Admins can adjust per-user or per-key limits:
+
+```bash
+# Update API key rate limit
+curl -X PUT http://localhost:8080/admin/api-keys/KEY_ID \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"rate_limit": 5000}'
 ```
 
 ## Development Workflow
