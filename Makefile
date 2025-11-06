@@ -165,11 +165,3 @@ db-embeddings: ## List query embeddings
 
 # Quick start command
 start: setup migrate test-db ## Start everything and run tests
-
-test-integration: setup ## Run integration tests with proper environment
-	@echo "Running integration tests..."
-	@set -a; source .env; set +a; go run cmd/test-integration/main.go
-
-test-claude: ## Test Claude client
-	@echo "Testing Claude client..."
-	@set -a; source .env; set +a; go run cmd/test-claude/main.go
