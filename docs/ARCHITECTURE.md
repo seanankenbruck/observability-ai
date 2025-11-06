@@ -611,6 +611,17 @@ Manual Trigger (admin API) → On-Demand Discovery
 
 ## Technology Choices
 
+### Core Services
+- **Language**: Go (for performance, concurrency, and Kubernetes ecosystem fit)
+- **Database**: PostgreSQL (for semantic mappings, query history, user sessions)
+- **Cache**: Redis (for query results, semantic embeddings)
+- **Message Queue**: Redis (for async query processing)
+
+### AI/ML Components
+- **Embedding Model**: OpenAI text-embedding-3-small or sentence-transformers
+- **LLM**: OpenAI GPT-4 or Claude (configurable)
+- **Vector Database**: pgvector (PostgreSQL extension) for semantic search
+
 ### Why Go?
 - Fast compilation and execution
 - Excellent concurrency (goroutines)
