@@ -186,8 +186,14 @@ func shouldSkipAuth(path string) bool {
 		"/api/v1/health",
 		"/api/v1/auth/login",
 		"/api/v1/auth/status",
-		"/static/",
+		"/assets/",      // Static assets (JS, CSS)
+		"/static/",      // Legacy static path
 		"/favicon.ico",
+	}
+
+	// Skip auth for root path (serves index.html)
+	if path == "/" {
+		return true
 	}
 
 	for _, skipPath := range skipPaths {

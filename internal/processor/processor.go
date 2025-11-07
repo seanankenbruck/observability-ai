@@ -377,7 +377,7 @@ func (qp *QueryProcessor) SetupRoutes(authMiddleware AuthMiddleware) *gin.Engine
 	}
 
 	// Serve static files for the web interface
-	r.Static("/static", "./web/dist/assets")
+	r.Static("/assets", "./web/dist/assets")
 	r.StaticFile("/", "./web/dist/index.html")
 
 	return r
