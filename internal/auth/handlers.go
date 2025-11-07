@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/seanankenbruck/observability-ai/internal/errors"
 )
 
 // AuthHandlers provides HTTP handlers for authentication endpoints
@@ -62,7 +63,8 @@ type LoginResponse struct {
 func (ah *AuthHandlers) Login(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		enhancedErr := errors.NewInvalidInputError("request body", err.Error())
+		c.JSON(http.StatusBadRequest, formatAuthErrorResponse(enhancedErr))
 		return
 	}
 
@@ -70,21 +72,24 @@ func (ah *AuthHandlers) Login(c *gin.Context) {
 	// In production, you'd validate against a password hash
 	user, err := ah.authManager.GetUserByUsername(req.Username)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+		enhancedErr := errors.NewInvalidCredentialsError()
+		c.JSON(http.StatusUnauthorized, formatAuthErrorResponse(enhancedErr))
 		return
 	}
 
 	// Create JWT token
 	token, err := ah.authManager.CreateJWTToken(user)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create token"})
+		enhancedErr := errors.NewTokenCreationError(err)
+		c.JSON(http.StatusInternalServerError, formatAuthErrorResponse(enhancedErr))
 		return
 	}
 
 	// Create session
 	session, err := ah.authManager.CreateSession(user.ID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create session"})
+		enhancedErr := errors.NewSessionCreationError(err)
+		c.JSON(http.StatusInternalServerError, formatAuthErrorResponse(enhancedErr))
 		return
 	}
 
@@ -126,7 +131,8 @@ func (ah *AuthHandlers) Logout(c *gin.Context) {
 func (ah *AuthHandlers) GetCurrentUser(c *gin.Context) {
 	user, exists := GetCurrentUser(c)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
+		enhancedErr := errors.NewNotAuthenticatedError()
+		c.JSON(http.StatusUnauthorized, formatAuthErrorResponse(enhancedErr))
 		return
 	}
 
@@ -175,20 +181,25 @@ type CreateAPIKeyResponse struct {
 func (ah *AuthHandlers) CreateAPIKey(c *gin.Context) {
 	var req CreateAPIKeyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		enhancedErr := errors.NewInvalidInputError("request body", err.Error())
+		c.JSON(http.StatusBadRequest, formatAuthErrorResponse(enhancedErr))
 		return
 	}
 
 	userID, exists := GetCurrentUserID(c)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
+		enhancedErr := errors.NewNotAuthenticatedError()
+		c.JSON(http.StatusUnauthorized, formatAuthErrorResponse(enhancedErr))
 		return
 	}
 
 	// Parse expiry duration
 	expiresIn, err := parseDuration(req.ExpiresIn)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid expiry duration"})
+		enhancedErr := errors.New(errors.ErrCodeInvalidDuration, "Invalid expiry duration format").
+			WithDetails("The expires_in field must be in format: '30d', '1y', '720h', etc.").
+			WithSuggestion("Use formats like '30d' for 30 days, '1y' for 1 year, or '720h' for 720 hours.")
+		c.JSON(http.StatusBadRequest, formatAuthErrorResponse(enhancedErr))
 		return
 	}
 
@@ -207,7 +218,10 @@ func (ah *AuthHandlers) CreateAPIKey(c *gin.Context) {
 		expiresIn,
 	)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		enhancedErr := errors.Wrap(err, errors.ErrCodeInvalidInput, "Failed to create API key").
+			WithDetails("Unable to create the API key with the provided parameters").
+			WithSuggestion("Ensure the API key name is unique and all parameters are valid.")
+		c.JSON(http.StatusInternalServerError, formatAuthErrorResponse(enhancedErr))
 		return
 	}
 
@@ -225,13 +239,17 @@ func (ah *AuthHandlers) CreateAPIKey(c *gin.Context) {
 func (ah *AuthHandlers) ListAPIKeys(c *gin.Context) {
 	userID, exists := GetCurrentUserID(c)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
+		enhancedErr := errors.NewNotAuthenticatedError()
+		c.JSON(http.StatusUnauthorized, formatAuthErrorResponse(enhancedErr))
 		return
 	}
 
 	keys, err := ah.authManager.ListAPIKeys(userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		enhancedErr := errors.Wrap(err, errors.ErrCodeDatabaseQuery, "Failed to retrieve API keys").
+			WithDetails("Unable to fetch the list of API keys").
+			WithSuggestion("This is an internal error. Please try again.")
+		c.JSON(http.StatusInternalServerError, formatAuthErrorResponse(enhancedErr))
 		return
 	}
 
@@ -244,7 +262,11 @@ func (ah *AuthHandlers) RevokeAPIKey(c *gin.Context) {
 
 	err := ah.authManager.RevokeAPIKey(keyID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		enhancedErr := errors.New(errors.ErrCodeInvalidInput, "Failed to revoke API key").
+			WithDetails("The specified API key could not be found or has already been revoked").
+			WithSuggestion("Verify the API key ID is correct using the /api/v1/api-keys endpoint.").
+			WithMetadata("key_id", keyID)
+		c.JSON(http.StatusNotFound, formatAuthErrorResponse(enhancedErr))
 		return
 	}
 
@@ -262,7 +284,8 @@ type CreateUserRequest struct {
 func (ah *AuthHandlers) CreateUser(c *gin.Context) {
 	var req CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		enhancedErr := errors.NewInvalidInputError("request body", err.Error())
+		c.JSON(http.StatusBadRequest, formatAuthErrorResponse(enhancedErr))
 		return
 	}
 
@@ -273,7 +296,11 @@ func (ah *AuthHandlers) CreateUser(c *gin.Context) {
 
 	user, err := ah.authManager.CreateUser(req.Username, req.Email, req.Roles)
 	if err != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		enhancedErr := errors.Wrap(err, errors.ErrCodeInvalidInput, "Failed to create user").
+			WithDetails("A user with this username or email may already exist").
+			WithSuggestion("Choose a different username or email address.").
+			WithMetadata("username", req.Username)
+		c.JSON(http.StatusConflict, formatAuthErrorResponse(enhancedErr))
 		return
 	}
 
@@ -327,4 +354,43 @@ func parseDuration(s string) (time.Duration, error) {
 
 	// Use standard time.ParseDuration for other formats (e.g., "720h", "48h")
 	return time.ParseDuration(s)
+}
+
+// formatAuthErrorResponse formats an error into a user-friendly response
+func formatAuthErrorResponse(err error) gin.H {
+	// Check if it's an EnhancedError
+	if enhancedErr, ok := err.(*errors.EnhancedError); ok {
+		response := gin.H{
+			"error": gin.H{
+				"code":    enhancedErr.Code,
+				"message": enhancedErr.Message,
+			},
+		}
+
+		if enhancedErr.Details != "" {
+			response["error"].(gin.H)["details"] = enhancedErr.Details
+		}
+
+		if enhancedErr.Suggestion != "" {
+			response["error"].(gin.H)["suggestion"] = enhancedErr.Suggestion
+		}
+
+		if enhancedErr.Documentation != "" {
+			response["error"].(gin.H)["documentation"] = enhancedErr.Documentation
+		}
+
+		if len(enhancedErr.Metadata) > 0 {
+			response["error"].(gin.H)["metadata"] = enhancedErr.Metadata
+		}
+
+		return response
+	}
+
+	// Fallback for regular errors
+	return gin.H{
+		"error": gin.H{
+			"code":    "INTERNAL_ERROR",
+			"message": err.Error(),
+		},
+	}
 }
