@@ -118,6 +118,7 @@ func main() {
 
 	// Create query processor
 	qp := processor.NewQueryProcessor(llmClient, semanticMapper, rdb)
+	qp.SetHealthChecker(healthChecker)
 
 	// Setup Gin router with authentication
 	router := qp.SetupRoutes(authManager)
@@ -136,15 +137,7 @@ func main() {
 		})
 	})
 
-	// Enhanced health endpoint
-	router.GET("/health", func(c *gin.Context) {
-		response := healthChecker.GetHealthResponse(c.Request.Context())
-		statusCode := 200
-		if response.Status == observability.HealthStatusUnhealthy {
-			statusCode = 503
-		}
-		c.JSON(statusCode, response)
-	})
+	// Note: /health endpoint is registered in processor.SetupRoutes()
 
 	// Add auth handlers for login/logout/user management
 	authHandlers := auth.NewAuthHandlers(authManager)

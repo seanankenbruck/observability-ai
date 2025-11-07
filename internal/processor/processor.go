@@ -44,6 +44,7 @@ type QueryProcessor struct {
 	cache            *redis.Client
 	intentClassifier *IntentClassifier
 	logger           *observability.Logger
+	healthChecker    *observability.HealthChecker
 }
 
 // NewQueryProcessor creates a new query processor instance
@@ -56,6 +57,11 @@ func NewQueryProcessor(llmClient llm.Client, semanticMapper semantic.Mapper, cac
 		intentClassifier: NewIntentClassifier(),
 		logger:           observability.NewLogger("query-processor"),
 	}
+}
+
+// SetHealthChecker sets the health checker for the processor
+func (qp *QueryProcessor) SetHealthChecker(healthChecker *observability.HealthChecker) {
+	qp.healthChecker = healthChecker
 }
 
 // ProcessQuery handles the main query processing logic
@@ -301,11 +307,21 @@ func (qp *QueryProcessor) SetupRoutes(authMiddleware AuthMiddleware) *gin.Engine
 
 	// Public health check endpoint
 	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status":  "healthy",
-			"version": "1.0.0",
-			"service": "query-processor",
-		})
+		if qp.healthChecker != nil {
+			response := qp.healthChecker.GetHealthResponse(c.Request.Context())
+			statusCode := http.StatusOK
+			if response.Status == observability.HealthStatusUnhealthy {
+				statusCode = http.StatusServiceUnavailable
+			}
+			c.JSON(statusCode, response)
+		} else {
+			// Fallback for when health checker is not configured
+			c.JSON(http.StatusOK, gin.H{
+				"status":  "healthy",
+				"version": "1.0.0",
+				"service": "query-processor",
+			})
+		}
 	})
 
 	// Public API v1 health endpoint
