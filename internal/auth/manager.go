@@ -11,16 +11,18 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // User represents a user in the system
 type User struct {
-	ID       string            `json:"id"`
-	Username string            `json:"username"`
-	Email    string            `json:"email"`
-	Roles    []string          `json:"roles"`
-	Metadata map[string]string `json:"metadata,omitempty"`
-	Active   bool              `json:"active"`
+	ID           string            `json:"id"`
+	Username     string            `json:"username"`
+	Email        string            `json:"email"`
+	PasswordHash string            `json:"-"` // Never expose password hash in JSON
+	Roles        []string          `json:"roles"`
+	Metadata     map[string]string `json:"metadata,omitempty"`
+	Active       bool              `json:"active"`
 }
 
 // APIKey represents an API key for authentication
@@ -108,8 +110,13 @@ func NewAuthManager(config AuthConfig) *AuthManager {
 	return am
 }
 
-// CreateUser creates a new user
+// CreateUser creates a new user (without password - used for admin creation)
 func (am *AuthManager) CreateUser(username, email string, roles []string) (*User, error) {
+	return am.CreateUserWithPassword(username, email, "", roles)
+}
+
+// CreateUserWithPassword creates a new user with a password
+func (am *AuthManager) CreateUserWithPassword(username, email, password string, roles []string) (*User, error) {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
@@ -118,19 +125,40 @@ func (am *AuthManager) CreateUser(username, email string, roles []string) (*User
 		return nil, fmt.Errorf("user already exists: %s", username)
 	}
 
+	// Hash password if provided
+	var passwordHash string
+	if password != "" {
+		hashedBytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			return nil, fmt.Errorf("failed to hash password: %w", err)
+		}
+		passwordHash = string(hashedBytes)
+	}
+
 	user := &User{
-		ID:       uuid.New().String(),
-		Username: username,
-		Email:    email,
-		Roles:    roles,
-		Metadata: make(map[string]string),
-		Active:   true,
+		ID:           uuid.New().String(),
+		Username:     username,
+		Email:        email,
+		PasswordHash: passwordHash,
+		Roles:        roles,
+		Metadata:     make(map[string]string),
+		Active:       true,
 	}
 
 	am.users[user.ID] = user
 	am.userByUsername[username] = user
 
 	return user, nil
+}
+
+// ValidatePassword checks if the provided password matches the user's password hash
+func (am *AuthManager) ValidatePassword(user *User, password string) bool {
+	if user.PasswordHash == "" {
+		// No password set - for backward compatibility with admin user
+		return true
+	}
+	err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
+	return err == nil
 }
 
 // GetUser retrieves a user by ID
