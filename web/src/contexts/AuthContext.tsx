@@ -50,7 +50,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const login = async (username: string, password: string) => {
-    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
+    // Use relative path so it works with both Vite proxy (dev) and nginx proxy (production/docker)
+    const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
     const response = await fetch(`${API_BASE_URL}/auth/login`, {
       method: 'POST',
@@ -73,7 +74,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = async () => {
-    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
+    // Use relative path so it works with both Vite proxy (dev) and nginx proxy (production/docker)
+    const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
     // Call logout endpoint (best effort)
     if (token) {
