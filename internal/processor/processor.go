@@ -12,6 +12,7 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/seanankenbruck/observability-ai/internal/errors"
 	"github.com/seanankenbruck/observability-ai/internal/llm"
+	"github.com/seanankenbruck/observability-ai/internal/observability"
 	"github.com/seanankenbruck/observability-ai/internal/semantic"
 )
 
@@ -42,6 +43,7 @@ type QueryProcessor struct {
 	safetyChecker    *SafetyChecker
 	cache            *redis.Client
 	intentClassifier *IntentClassifier
+	logger           *observability.Logger
 }
 
 // NewQueryProcessor creates a new query processor instance
@@ -52,6 +54,7 @@ func NewQueryProcessor(llmClient llm.Client, semanticMapper semantic.Mapper, cac
 		cache:            cache,
 		safetyChecker:    NewSafetyChecker(),
 		intentClassifier: NewIntentClassifier(),
+		logger:           observability.NewLogger("query-processor"),
 	}
 }
 
@@ -59,54 +62,106 @@ func NewQueryProcessor(llmClient llm.Client, semanticMapper semantic.Mapper, cac
 func (qp *QueryProcessor) ProcessQuery(ctx context.Context, req *QueryRequest) (*QueryResponse, error) {
 	start := time.Now()
 
+	// Log query start
+	qp.logger.Info(ctx, "Processing query", map[string]interface{}{
+		"query":      req.Query,
+		"time_range": req.TimeRange,
+	})
+
+	var errorType string
+	var response *QueryResponse
+	var processingErr error
+
+	defer func() {
+		// Record metrics at the end
+		duration := time.Since(start)
+		success := processingErr == nil
+		cached := response != nil && response.CacheHit
+		observability.RecordQueryMetrics(duration, success, cached, errorType)
+
+		if processingErr != nil {
+			qp.logger.Error(ctx, "Query processing failed", processingErr, map[string]interface{}{
+				"query":       req.Query,
+				"duration_ms": duration.Milliseconds(),
+				"error_type":  errorType,
+			})
+		} else {
+			qp.logger.Info(ctx, "Query processed successfully", map[string]interface{}{
+				"query":       req.Query,
+				"duration_ms": duration.Milliseconds(),
+				"cache_hit":   cached,
+				"confidence":  response.Confidence,
+			})
+		}
+	}()
+
 	// Check cache first
 	if cachedResult, err := qp.getCachedResult(ctx, req.Query); err == nil {
+		qp.logger.Debug(ctx, "Cache hit for query", map[string]interface{}{
+			"query": req.Query,
+		})
 		cachedResult.CacheHit = true
 		cachedResult.ProcessingTime = time.Since(start)
+		response = cachedResult
 		return cachedResult, nil
 	}
 
 	// Classify intent
 	intent, err := qp.intentClassifier.ClassifyIntent(req.Query)
 	if err != nil {
-		return nil, errors.NewIntentClassificationError(err, req.Query)
+		errorType = "intent_classification"
+		processingErr = errors.NewIntentClassificationError(err, req.Query)
+		return nil, processingErr
 	}
 
 	// Generate embeddings for semantic search
 	embedding, err := qp.llmClient.GetEmbedding(ctx, req.Query)
 	if err != nil {
-		return nil, errors.NewEmbeddingGenerationError(err)
+		errorType = "embedding_generation"
+		processingErr = errors.NewEmbeddingGenerationError(err)
+		return nil, processingErr
 	}
 
 	// Find similar queries
 	similarQueries, err := qp.semanticMapper.FindSimilarQueries(ctx, embedding)
 	if err != nil {
 		// Log warning but don't fail - similar queries are optional
-		fmt.Printf("Warning: failed to find similar queries: %v\n", err)
+		qp.logger.Warn(ctx, "Failed to find similar queries", map[string]interface{}{
+			"error": err.Error(),
+		})
 	}
 
 	// Build enhanced prompt
 	prompt, err := qp.buildPrompt(ctx, req, intent, similarQueries)
 	if err != nil {
-		return nil, errors.Wrap(err, errors.ErrCodePromptBuilding, "Failed to build prompt for query generation").
+		errorType = "prompt_building"
+		processingErr = errors.Wrap(err, errors.ErrCodePromptBuilding, "Failed to build prompt for query generation").
 			WithDetails("An error occurred while constructing the prompt for the AI model").
 			WithSuggestion("This is an internal error. Please try your query again.").
 			WithMetadata("retryable", true)
+		return nil, processingErr
 	}
 
 	// Generate PromQL using LLM
 	llmResponse, err := qp.llmClient.GenerateQuery(ctx, prompt)
 	if err != nil {
-		return nil, errors.NewQueryGenerationError(err)
+		errorType = "query_generation"
+		processingErr = errors.NewQueryGenerationError(err)
+		return nil, processingErr
 	}
 
 	// Validate query safety
 	if err := qp.safetyChecker.ValidateQuery(llmResponse.PromQL); err != nil {
-		return nil, err // Already an enhanced error from SafetyChecker
+		errorType = "safety_validation"
+		processingErr = err // Already an enhanced error from SafetyChecker
+		observability.GetGlobalMetrics().Inc(observability.MetricQuerySafetyViolation, map[string]string{
+			"error_type": errorType,
+		})
+		return nil, processingErr
 	}
 
 	// Build response
-	response := &QueryResponse{
+	response = &QueryResponse{
 		PromQL:         llmResponse.PromQL,
 		Explanation:    llmResponse.Explanation,
 		Confidence:     llmResponse.Confidence,
@@ -121,7 +176,9 @@ func (qp *QueryProcessor) ProcessQuery(ctx context.Context, req *QueryRequest) (
 
 	// Cache the result
 	if err := qp.cacheResult(ctx, req.Query, response); err != nil {
-		fmt.Printf("Warning: failed to cache result: %v\n", err)
+		qp.logger.Warn(ctx, "Failed to cache query result", map[string]interface{}{
+			"error": err.Error(),
+		})
 	}
 
 	return response, nil
@@ -303,7 +360,7 @@ func (qp *QueryProcessor) SetupRoutes(authMiddleware AuthMiddleware) *gin.Engine
 		api.GET("/suggestions", qp.handleGetSuggestions)
 	}
 
-	// Serve static files for the web interface (in production)
+	// Serve static files for the web interface
 	r.Static("/static", "./web/dist/assets")
 	r.StaticFile("/", "./web/dist/index.html")
 
