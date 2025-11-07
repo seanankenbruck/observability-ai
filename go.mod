@@ -11,6 +11,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/pgvector/pgvector-go v0.1.1
 	github.com/stretchr/testify v1.8.3
+	golang.org/x/crypto v0.13.0
 )
 
 require (
@@ -39,7 +40,6 @@ require (
 	github.com/ugorji/go/codec v1.2.11 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
 	golang.org/x/arch v0.3.0 // indirect
-	golang.org/x/crypto v0.13.0 // indirect
 	golang.org/x/net v0.15.0 // indirect
 	golang.org/x/sys v0.12.0 // indirect
 	golang.org/x/text v0.13.0 // indirect

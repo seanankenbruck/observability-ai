@@ -137,11 +137,25 @@ curl http://localhost:8080/health
 ```json
 {
   "status": "healthy",
-  "timestamp": "2025-01-15T10:00:00Z"
+  "timestamp": "2025-01-15T10:00:00Z",
+  "checks": {
+    "database": {
+      "status": "healthy",
+      "message": "Database connection successful"
+    },
+    "redis": {
+      "status": "healthy",
+      "message": "Redis connection successful"
+    },
+    "memory": {
+      "status": "healthy",
+      "message": "Memory usage normal"
+    }
+  }
 }
 ```
 
-**✅ Success Indicator:** You see `"status": "healthy"` in the response.
+**✅ Success Indicator:** You see `"status": "healthy"` and all checks show "healthy" status.
 
 **❌ Common Issues:**
 - **Port 8080 already in use**: Run `lsof -i :8080` to find what's using it
@@ -149,8 +163,10 @@ curl http://localhost:8080/health
 - **Connection refused**: Check logs with `make logs`
 
 **Access Points:**
-- 🌐 Backend API: http://localhost:8080
+- 🌐 Web Interface: http://localhost:8080
+- 🔌 Backend API: http://localhost:8080/api/v1
 - 🏥 Health Check: http://localhost:8080/health
+- 📊 Metrics: http://localhost:8080/metrics
 
 **Skip to [Step 3](#step-3-test-your-first-query--1-minute)** ⬇️
 
@@ -163,7 +179,27 @@ curl http://localhost:8080/health
 **Requires:** Go 1.21+ and Node.js 18+ installed
 
 ```bash
-# 1. Start PostgreSQL and Redis in Docker
+# 1. Start Mimir (in a separate terminal)
+docker run -d \
+  --name mimir-local \
+  -p 9009:9009 \
+  -v $(pwd)/mimir-config.yaml:/etc/mimir/config.yaml \
+  -v mimir-data:/data \
+  grafana/mimir:latest \
+  --config.file=/etc/mimir/config.yaml
+
+# Verify Mimir is running
+curl http://localhost:9009/ready
+
+# 2. Start Prometheus to populate Mimir with test metrics
+docker run -d \
+  --name prometheus-local \
+  --network host \
+  -v $(pwd)/prometheus-config.yaml:/etc/prometheus/prometheus.yml \
+  prom/prometheus:latest \
+  --config.file=/etc/prometheus/prometheus.yml
+
+# 3. Start PostgreSQL and Redis in Docker
 make setup
 ```
 
@@ -294,7 +330,7 @@ Before querying, you need to register and get a token:
 
 ```bash
 # Register a new user
-curl -X POST http://localhost:8080/auth/register \
+curl -X POST http://localhost:8080/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "username": "testuser",
@@ -306,16 +342,25 @@ curl -X POST http://localhost:8080/auth/register \
 **Expected response:**
 ```json
 {
-  "message": "user registered successfully",
-  "user_id": "550e8400-e29b-41d4-a716-446655440000"
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "expires_at": "2025-11-08T14:15:33-05:00",
+  "user": {
+    "id": "0d7e1f56-5bb9-4fbe-91f0-97527f16077d",
+    "username": "testuser",
+    "email": "test@example.com",
+    "roles": ["user"],
+    "active": true
+  }
 }
 ```
+
+**Note:** Registration automatically logs you in and returns a JWT token. You can use this token immediately for authenticated requests.
 
 ### Login to Get Token
 
 ```bash
 # Login (use admin if you ran 'make test-db', or your registered user)
-curl -X POST http://localhost:8080/auth/login \
+curl -X POST http://localhost:8080/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "username": "testuser",
@@ -347,7 +392,7 @@ TOKEN="your-token-from-above"
 
 ```bash
 # Query with natural language
-curl -X POST http://localhost:8080/query \
+curl -X POST http://localhost:8080/api/v1/query \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"query": "What is the CPU usage for the auth service?"}'
@@ -385,7 +430,7 @@ curl -X POST http://localhost:8080/query \
 
 ```bash
 # List available services
-curl http://localhost:8080/services \
+curl http://localhost:8080/api/v1/services \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -412,7 +457,7 @@ curl http://localhost:8080/services \
 
 ```bash
 # List available metrics
-curl http://localhost:8080/metrics \
+curl http://localhost:8080/api/v1/metrics \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -439,7 +484,7 @@ curl http://localhost:8080/metrics \
 
 ```bash
 # Check your query history
-curl http://localhost:8080/history \
+curl http://localhost:8080/api/v1/history \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -482,13 +527,13 @@ Now that everything is working, try these example queries:
 
 ```bash
 # Memory usage
-curl -X POST http://localhost:8080/query \
+curl -X POST http://localhost:8080/api/v1/query \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"query": "How much memory is the payment service using?"}'
 
 # Network traffic
-curl -X POST http://localhost:8080/query \
+curl -X POST http://localhost:8080/api/v1/query \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"query": "Show me network traffic for the API gateway"}'
@@ -498,13 +543,13 @@ curl -X POST http://localhost:8080/query \
 
 ```bash
 # Error rates
-curl -X POST http://localhost:8080/query \
+curl -X POST http://localhost:8080/api/v1/query \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"query": "What is the error rate for the checkout service?"}'
 
 # Latency
-curl -X POST http://localhost:8080/query \
+curl -X POST http://localhost:8080/api/v1/query \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"query": "Show me 95th percentile latency for the API"}'
@@ -514,7 +559,7 @@ curl -X POST http://localhost:8080/query \
 
 ```bash
 # Service comparison
-curl -X POST http://localhost:8080/query \
+curl -X POST http://localhost:8080/api/v1/query \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"query": "Compare CPU usage between auth and payment services"}'
@@ -524,7 +569,7 @@ curl -X POST http://localhost:8080/query \
 
 ```bash
 # What's breaking
-curl -X POST http://localhost:8080/query \
+curl -X POST http://localhost:8080/api/v1/query \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"query": "What services have high error rates right now?"}'
@@ -554,6 +599,12 @@ make stop
 **To completely clean up** (removes data, containers, and volumes):
 ```bash
 make clean
+```
+
+**Additional shutdown steps for prometheus and mimir**
+```bash
+docker stop prometheus-local mimir-local && docker rm prometheus-local mimir-local
+docker volume rm mimir-data  # Optional: Remove Mimir data
 ```
 
 **⚠️ Warning:** `make clean` will delete all your data including users, query history, and discovered services!
@@ -654,7 +705,7 @@ curl https://api.anthropic.com/v1/complete \
 ```bash
 # Your JWT token may have expired (24h lifetime)
 # Login again to get a new token:
-curl -X POST http://localhost:8080/auth/login \
+curl -X POST http://localhost:8080/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username": "testuser", "password": "securepassword123"}'
 

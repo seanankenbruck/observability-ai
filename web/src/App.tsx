@@ -190,7 +190,7 @@ function App() {
               services={services}
               onRefresh={loadServices}
               isLoading={isServicesLoading}
-              onServiceSelect={(service) => {
+              onServiceSelect={(_service) => {
                 // Switch to chat and insert service query
                 setActiveTab('chat');
                 // You could auto-populate the input here

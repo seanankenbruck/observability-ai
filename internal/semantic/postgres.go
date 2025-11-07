@@ -56,6 +56,11 @@ func NewPostgresMapper(config PostgresConfig) (*PostgresMapper, error) {
 	return &PostgresMapper{db: db}, nil
 }
 
+// Ping tests the database connection
+func (pm *PostgresMapper) Ping(ctx context.Context) error {
+	return pm.db.PingContext(ctx)
+}
+
 // Close closes the database connection
 func (pm *PostgresMapper) Close() error {
 	return pm.db.Close()
