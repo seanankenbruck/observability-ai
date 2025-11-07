@@ -486,7 +486,7 @@ curl http://localhost:8080/api/v1/services \
 
 ```bash
 # List available metrics
-curl http://localhost:8080/metrics \
+curl http://localhost:8080/api/v1/metrics \
   -H "Authorization: Bearer $TOKEN"
 ```
 
