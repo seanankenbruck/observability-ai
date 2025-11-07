@@ -137,11 +137,25 @@ curl http://localhost:8080/health
 ```json
 {
   "status": "healthy",
-  "timestamp": "2025-01-15T10:00:00Z"
+  "timestamp": "2025-01-15T10:00:00Z",
+  "checks": {
+    "database": {
+      "status": "healthy",
+      "message": "Database connection successful"
+    },
+    "redis": {
+      "status": "healthy",
+      "message": "Redis connection successful"
+    },
+    "memory": {
+      "status": "healthy",
+      "message": "Memory usage normal"
+    }
+  }
 }
 ```
 
-**✅ Success Indicator:** You see `"status": "healthy"` in the response.
+**✅ Success Indicator:** You see `"status": "healthy"` and all checks show "healthy" status.
 
 **❌ Common Issues:**
 - **Port 8080 already in use**: Run `lsof -i :8080` to find what's using it
@@ -149,8 +163,10 @@ curl http://localhost:8080/health
 - **Connection refused**: Check logs with `make logs`
 
 **Access Points:**
-- 🌐 Backend API: http://localhost:8080
+- 🌐 Web Interface: http://localhost:8080
+- 🔌 Backend API: http://localhost:8080/api/v1
 - 🏥 Health Check: http://localhost:8080/health
+- 📊 Metrics: http://localhost:8080/metrics
 
 **Skip to [Step 3](#step-3-test-your-first-query--1-minute)** ⬇️
 
