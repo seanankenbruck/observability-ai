@@ -47,11 +47,6 @@ services:
     volumes:
       - ./mimir-config.yaml:/etc/mimir/config.yaml
       - mimir_data:/data
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9009/ready"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     networks:
       - observability-net
 
@@ -63,7 +58,7 @@ services:
     environment:
       # Database configuration
       DB_HOST: postgres
-      DB_PORT: 5433
+      DB_PORT: 5432
       DB_NAME: observability_ai
       DB_USER: obs_ai
       DB_PASSWORD: changeme
@@ -106,14 +101,14 @@ services:
       redis:
         condition: service_healthy
       mimir:
-        condition: service_healthy
+        condition: service_started
     networks:
       - observability-net
     restart: unless-stopped
     # Mount source code for development (optional - comment out for production)
-    volumes:
-      - .:/app
-    working_dir: /app
+    # volumes:
+    #   - .:/app
+    # working_dir: /app
 
 volumes:
   postgres_data:
