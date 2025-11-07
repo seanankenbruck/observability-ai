@@ -36,8 +36,10 @@ start-dev-docker: ## Start everything with Docker Compose (including query proce
 	fi
 	docker-compose up -d
 	@echo "Development environment started with Docker!"
+	@echo "Frontend UI: http://localhost:3000"
 	@echo "Backend API: http://localhost:8080"
 	@echo "Health check: http://localhost:8080/health"
+	@echo "Prometheus: http://localhost:9090"
 
 run-query-processor: ## Run the query processor locally (requires setup first)
 	@echo "Starting query processor..."

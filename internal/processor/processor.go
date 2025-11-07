@@ -442,7 +442,8 @@ func (qp *QueryProcessor) handleGetAllMetrics(c *gin.Context) {
 		return
 	}
 
-	var allMetrics []interface{}
+	// Initialize as empty array instead of nil to ensure JSON returns [] instead of null
+	allMetrics := make([]interface{}, 0)
 	for _, service := range services {
 		metrics, err := qp.semanticMapper.GetMetrics(c.Request.Context(), service.ID)
 		if err != nil {

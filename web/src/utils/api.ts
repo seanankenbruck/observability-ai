@@ -1,6 +1,7 @@
 import { QueryRequest, QueryResponse, Service, Metric, ApiError } from '../types/api';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
+// Use relative path so it works with both Vite proxy (dev) and nginx proxy (production/docker)
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
 class ApiClient {
   private baseUrl: string;
