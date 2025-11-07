@@ -250,14 +250,14 @@ Once running, the backend exposes:
 ### Public Endpoints
 - `GET /health` - Global health check
 - `GET /api/v1/health` - API endpoint health check
-- `POST /auth/register` - Register new user
-- `POST /auth/login` - Login and get JWT token
+- `POST /api/v1/auth/register` - Register new user
+- `POST /api/v1/auth/login` - Login and get JWT token
 
 ### Protected Endpoints (Require Authentication)
-- `POST /query` - Process natural language query
-- `GET /history` - Query history
-- `GET /services` - List available services
-- `GET /metrics` - List available metrics
+- `POST /api/v1/query` - Process natural language query
+- `GET /api/v1/history` - Query history
+- `GET /api/v1/services` - List available services
+- `GET /api/v1/metrics` - List available metrics
 
 ### Admin Endpoints (Require Admin Role)
 - `GET /admin/api-keys` - List all API keys
@@ -270,13 +270,13 @@ Once running, the backend exposes:
 Example authenticated query:
 ```bash
 # First, login to get a token
-TOKEN=$(curl -X POST http://localhost:8080/auth/login \
+TOKEN=$(curl -X POST http://localhost:8080/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username": "admin", "password": "your-password"}' \
   | jq -r '.token')
 
 # Then use the token for API requests
-curl -X POST http://localhost:8080/query \
+curl -X POST http://localhost:8080/api/v1/query \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"query": "What is the CPU usage for the auth service?"}'
@@ -332,11 +332,11 @@ View discovered services:
 
 ```bash
 # List all discovered services
-curl http://localhost:8080/services \
+curl http://localhost:8080/api/v1/services \
   -H "Authorization: Bearer $TOKEN"
 
 # List all discovered metrics
-curl http://localhost:8080/metrics \
+curl http://localhost:8080/api/v1/metrics \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -369,7 +369,7 @@ JWT_SECRET=your-secure-secret-key-here
 3. **Login to get JWT token**:
 
 ```bash
-TOKEN=$(curl -X POST http://localhost:8080/auth/login \
+TOKEN=$(curl -X POST http://localhost:8080/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username": "admin", "password": "your-password"}' \
   | jq -r '.token')
@@ -380,7 +380,7 @@ TOKEN=$(curl -X POST http://localhost:8080/auth/login \
 Register new users via the API:
 
 ```bash
-curl -X POST http://localhost:8080/auth/register \
+curl -X POST http://localhost:8080/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "username": "new-user",
@@ -394,7 +394,7 @@ curl -X POST http://localhost:8080/auth/register \
 Include the JWT token in the `Authorization` header for all protected endpoints:
 
 ```bash
-curl -X POST http://localhost:8080/query \
+curl -X POST http://localhost:8080/api/v1/query \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "show me CPU usage"}'
@@ -443,7 +443,7 @@ Response:
 API keys can be used instead of JWT tokens:
 
 ```bash
-curl -X POST http://localhost:8080/query \
+curl -X POST http://localhost:8080/api/v1/query \
   -H "X-API-Key: obs_ai_1234567890abcdef" \
   -H "Content-Type: application/json" \
   -d '{"query": "What is memory usage?"}'
