@@ -26,6 +26,7 @@ func NewAuthHandlers(authManager *AuthManager) *AuthHandlers {
 // SetupRoutes sets up authentication routes
 func (ah *AuthHandlers) SetupRoutes(r *gin.RouterGroup) {
 	// Auth endpoints
+	r.POST("/auth/register", ah.Register)
 	r.POST("/auth/login", ah.Login)
 	r.POST("/auth/logout", ah.Logout)
 	r.GET("/auth/me", ah.authManager.Middleware(), ah.GetCurrentUser)
@@ -59,6 +60,68 @@ type LoginResponse struct {
 	User      *User  `json:"user"`
 }
 
+// RegisterRequest represents a registration request
+type RegisterRequest struct {
+	Username string `json:"username" binding:"required"`
+	Email    string `json:"email" binding:"required,email"`
+	Password string `json:"password" binding:"required,min=8"`
+}
+
+// Register handles user registration
+func (ah *AuthHandlers) Register(c *gin.Context) {
+	var req RegisterRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		enhancedErr := errors.NewInvalidInputError("request body", err.Error())
+		c.JSON(http.StatusBadRequest, formatAuthErrorResponse(enhancedErr))
+		return
+	}
+
+	// Create user with password
+	user, err := ah.authManager.CreateUserWithPassword(req.Username, req.Email, req.Password, []string{"user"})
+	if err != nil {
+		enhancedErr := errors.Wrap(err, errors.ErrCodeInvalidInput, "Failed to register user").
+			WithDetails("A user with this username or email may already exist").
+			WithSuggestion("Choose a different username or email address.").
+			WithMetadata("username", req.Username)
+		c.JSON(http.StatusConflict, formatAuthErrorResponse(enhancedErr))
+		return
+	}
+
+	// Create JWT token
+	token, err := ah.authManager.CreateJWTToken(user)
+	if err != nil {
+		enhancedErr := errors.NewTokenCreationError(err)
+		c.JSON(http.StatusInternalServerError, formatAuthErrorResponse(enhancedErr))
+		return
+	}
+
+	// Create session
+	session, err := ah.authManager.CreateSession(user.ID)
+	if err != nil {
+		enhancedErr := errors.NewSessionCreationError(err)
+		c.JSON(http.StatusInternalServerError, formatAuthErrorResponse(enhancedErr))
+		return
+	}
+
+	// Set session cookie
+	c.SetCookie(
+		"session_id",
+		session.ID,
+		int(ah.authManager.config.SessionExpiry.Seconds()),
+		"/",
+		"",
+		false, // secure (set to true in production with HTTPS)
+		true,  // httpOnly
+	)
+
+	// Return response
+	c.JSON(http.StatusCreated, LoginResponse{
+		Token:     token,
+		ExpiresAt: time.Now().Add(ah.authManager.config.JWTExpiry).Format(time.RFC3339),
+		User:      user,
+	})
+}
+
 // Login handles user login
 func (ah *AuthHandlers) Login(c *gin.Context) {
 	var req LoginRequest
@@ -68,10 +131,16 @@ func (ah *AuthHandlers) Login(c *gin.Context) {
 		return
 	}
 
-	// For development: accept any password for admin user
-	// In production, you'd validate against a password hash
+	// Get user by username
 	user, err := ah.authManager.GetUserByUsername(req.Username)
 	if err != nil {
+		enhancedErr := errors.NewInvalidCredentialsError()
+		c.JSON(http.StatusUnauthorized, formatAuthErrorResponse(enhancedErr))
+		return
+	}
+
+	// Validate password
+	if !ah.authManager.ValidatePassword(user, req.Password) {
 		enhancedErr := errors.NewInvalidCredentialsError()
 		c.JSON(http.StatusUnauthorized, formatAuthErrorResponse(enhancedErr))
 		return
