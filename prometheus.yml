@@ -1,0 +1,66 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'docker-demo'
+    environment: 'development'
+
+# Remote write to Mimir
+remote_write:
+  - url: http://mimir:9009/api/v1/push
+    headers:
+      X-Scope-OrgID: demo
+
+# Scrape configurations
+scrape_configs:
+  # Scrape Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+          team: 'platform'
+
+  # Mock application metrics (demo-app)
+  - job_name: 'demo-app'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: 'demo-app'
+          team: 'backend'
+          environment: 'production'
+
+  # Mock auth service metrics
+  - job_name: 'auth-service'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: 'auth-service'
+          team: 'backend'
+          environment: 'production'
+
+  # Mock payment service metrics  
+  - job_name: 'payment-service'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: 'payment-service'
+          team: 'backend'
+          environment: 'production'
+
+  # Mock user service metrics
+  - job_name: 'user-service'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: 'user-service'
+          team: 'backend'
+          environment: 'production'
+
+  # Scrape Mimir itself
+  - job_name: 'mimir'
+    static_configs:
+      - targets: ['mimir:9009']
+        labels:
+          service: 'mimir'
+          team: 'platform'
