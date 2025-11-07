@@ -145,13 +145,14 @@ func (pm *PostgresMapper) GetMetrics(ctx context.Context, serviceID string) ([]M
 	var metrics []Metric
 	for rows.Next() {
 		var metric Metric
+		var descriptionNull sql.NullString
 		var labelsJSON sql.NullString
 
 		err := rows.Scan(
 			&metric.ID,
 			&metric.Name,
 			&metric.Type,
-			&metric.Description,
+			&descriptionNull,
 			&labelsJSON,
 			&metric.ServiceID,
 			&metric.CreatedAt,
@@ -159,6 +160,11 @@ func (pm *PostgresMapper) GetMetrics(ctx context.Context, serviceID string) ([]M
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan metric row: %w", err)
+		}
+
+		// Handle nullable description
+		if descriptionNull.Valid {
+			metric.Description = descriptionNull.String
 		}
 
 		// Parse labels JSON
@@ -309,6 +315,7 @@ func (pm *PostgresMapper) UpdateServiceMetrics(ctx context.Context, serviceID st
 		return fmt.Errorf("failed to marshal metric names: %w", err)
 	}
 
+	// Update the service's metric_names field
 	query := `
 		UPDATE services
 		SET metric_names = $1, updated_at = $2
@@ -327,6 +334,34 @@ func (pm *PostgresMapper) UpdateServiceMetrics(ctx context.Context, serviceID st
 
 	if rowsAffected == 0 {
 		return fmt.Errorf("service not found: %s", serviceID)
+	}
+
+	// Insert/update individual metric rows in the metrics table
+	// Use INSERT ... ON CONFLICT to handle duplicates
+	for _, metricName := range metrics {
+		metricID := uuid.New().String()
+
+		// Determine metric type from name (simple heuristic)
+		metricType := "gauge"
+		if strings.HasSuffix(metricName, "_total") || strings.HasSuffix(metricName, "_count") {
+			metricType = "counter"
+		} else if strings.HasSuffix(metricName, "_bucket") {
+			metricType = "histogram"
+		}
+
+		metricQuery := `
+			INSERT INTO metrics (id, name, type, service_id, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			ON CONFLICT (name, service_id)
+			DO UPDATE SET type = EXCLUDED.type, updated_at = EXCLUDED.updated_at
+		`
+
+		now := time.Now()
+		_, err := pm.db.ExecContext(ctx, metricQuery, metricID, metricName, metricType, serviceID, now, now)
+		if err != nil {
+			// Log error but continue with other metrics
+			fmt.Printf("Warning: failed to insert metric %s: %v\n", metricName, err)
+		}
 	}
 
 	return nil
