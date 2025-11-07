@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/seanankenbruck/observability-ai/internal/errors"
 )
 
 // SafetyChecker validates queries for safety
@@ -35,7 +37,7 @@ func (sc *SafetyChecker) ValidateQuery(promql string) error {
 	// Check for forbidden metrics
 	for _, forbidden := range sc.ForbiddenMetrics {
 		if matched, _ := regexp.MatchString(forbidden, promql); matched {
-			return fmt.Errorf("query contains forbidden metric pattern: %s", forbidden)
+			return errors.NewForbiddenMetricError(forbidden)
 		}
 	}
 
@@ -45,14 +47,14 @@ func (sc *SafetyChecker) ValidateQuery(promql string) error {
 		dangerousRanges := []string{"365d", "1y", "52w", "8760h"}
 		for _, dangerous := range dangerousRanges {
 			if strings.Contains(promql, dangerous) {
-				return fmt.Errorf("query time range exceeds maximum allowed: %s", dangerous)
+				return errors.NewExcessiveTimeRangeError(dangerous, sc.MaxQueryRange.String())
 			}
 		}
 	}
 
 	// Check for high cardinality operations
 	if strings.Contains(promql, "by ()") || strings.Contains(promql, "without ()") {
-		return fmt.Errorf("query may produce high cardinality results")
+		return errors.NewHighCardinalityError()
 	}
 
 	// Check for potentially expensive operations
@@ -64,13 +66,15 @@ func (sc *SafetyChecker) ValidateQuery(promql string) error {
 	}
 	for _, op := range expensiveOps {
 		if strings.Contains(strings.ToLower(promql), op) {
-			return fmt.Errorf("query contains potentially expensive operation: %s", op)
+			return errors.NewExpensiveOperationError(op)
 		}
 	}
 
 	// Check for nested subqueries (can be very expensive)
 	if strings.Count(promql, "(") > 3 {
-		return fmt.Errorf("query contains too many nested operations")
+		return errors.New(errors.ErrCodeTooManyNested, "Query contains too many nested operations").
+			WithDetails(fmt.Sprintf("The query has %d levels of nesting, maximum allowed is 3", strings.Count(promql, "("))).
+			WithSuggestion("Break down complex queries into simpler parts, or reduce the number of nested function calls.")
 	}
 
 	return nil
@@ -95,7 +99,7 @@ func (sc *SafetyChecker) ValidateTimeRange(timeRange string) error {
 			duration := time.Duration(multiplier) * unit
 
 			if duration > sc.MaxQueryRange {
-				return fmt.Errorf("time range %s exceeds maximum allowed duration of %s", timeRange, sc.MaxQueryRange)
+				return errors.NewExcessiveTimeRangeError(timeRange, sc.MaxQueryRange.String())
 			}
 		}
 	}
