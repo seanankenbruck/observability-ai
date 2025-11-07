@@ -250,6 +250,7 @@ Once running, the backend exposes:
 ### Public Endpoints
 - `GET /health` - Global health check
 - `GET /api/v1/health` - API endpoint health check
+- `GET /metrics` - Application observability metrics
 - `POST /api/v1/auth/register` - Register new user
 - `POST /api/v1/auth/login` - Login and get JWT token
 
@@ -257,7 +258,11 @@ Once running, the backend exposes:
 - `POST /api/v1/query` - Process natural language query
 - `GET /api/v1/history` - Query history
 - `GET /api/v1/services` - List available services
-- `GET /api/v1/metrics` - List available metrics
+- `GET /api/v1/services/:id` - Get service details
+- `GET /api/v1/services/search` - Search services
+- `GET /api/v1/services/:id/metrics` - Get metrics for a service
+- `GET /api/v1/metrics` - List all discovered metrics
+- `GET /api/v1/suggestions` - Get query suggestions
 
 ### Admin Endpoints (Require Admin Role)
 - `GET /admin/api-keys` - List all API keys
@@ -336,7 +341,7 @@ curl http://localhost:8080/api/v1/services \
   -H "Authorization: Bearer $TOKEN"
 
 # List all discovered metrics
-curl http://localhost:8080/api/v1/metrics \
+curl http://localhost:8080/metrics \
   -H "Authorization: Bearer $TOKEN"
 ```
 
