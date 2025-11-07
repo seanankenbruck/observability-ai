@@ -110,16 +110,28 @@ make start-dev-docker
 1. Pulling Docker images... (1-2 minutes)
 2. Starting PostgreSQL...
 3. Starting Redis...
-4. Running database migrations...
-5. Starting backend API...
+4. Starting Mimir...
+5. Running database migrations...
+6. Building and starting backend API...
+7. Building and starting frontend web app...
 ```
 
 **Expected output:**
 ```
-[+] Running 3/3
- ✔ Container observability-ai-postgres-1  Started
- ✔ Container observability-ai-redis-1     Started
- ✔ Container observability-ai-backend-1   Started
+[+] Running 7/7
+ ✔ Container observability-ai-postgres-1         Started
+ ✔ Container observability-ai-redis-1            Started
+ ✔ Container observability-ai-mimir-1            Started
+ ✔ Container observability-ai-prometheus-1       Started
+ ✔ Container observability-ai-node-exporter-1    Started
+ ✔ Container observability-ai-query-processor    Started
+ ✔ Container observability-ai-web                Started
+
+Development environment started with Docker!
+Frontend UI: http://localhost:3000
+Backend API: http://localhost:8080
+Health check: http://localhost:8080/health
+Prometheus: http://localhost:9090
 ```
 
 ### ✅ Verification (Method A)
@@ -127,10 +139,26 @@ make start-dev-docker
 ```bash
 # Check all containers are running
 docker-compose ps
-# Expected: All containers should show "Up" status
+# Expected: All 7 containers should show "Up" status
 
-# Test the health endpoint
+# Test the backend health endpoint
 curl http://localhost:8080/health
+
+# Verify Prometheus is scraping metrics
+curl http://localhost:9090/api/v1/targets
+
+# Open the frontend in your browser
+open http://localhost:3000
+
+# Verify frontend can connect to backend
+# The UI should load and show services (wait 15-30s for discovery)
+```
+
+**Note:** If you see connection errors in the browser console, rebuild the frontend:
+```bash
+docker-compose down
+docker-compose build --no-cache web
+docker-compose up -d
 ```
 
 **Expected response:**
@@ -163,10 +191,11 @@ curl http://localhost:8080/health
 - **Connection refused**: Check logs with `make logs`
 
 **Access Points:**
-- 🌐 Web Interface: http://localhost:8080
+- 🌐 Web Interface: http://localhost:3000
 - 🔌 Backend API: http://localhost:8080/api/v1
 - 🏥 Health Check: http://localhost:8080/health
-- 📊 Metrics: http://localhost:8080/metrics
+- 📊 Prometheus: http://localhost:9090
+- 📈 Mimir: http://localhost:9009
 
 **Skip to [Step 3](#step-3-test-your-first-query--1-minute)** ⬇️
 

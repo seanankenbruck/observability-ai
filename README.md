@@ -74,6 +74,12 @@ curl -X POST http://localhost:8080/query \
 
 **📖 See [QUICKSTART.md](QUICKSTART.md) for detailed setup instructions.**
 
+**💡 Two deployment modes available:**
+- **Docker Mode** (`make start-dev-docker`): Complete containerized setup - includes frontend UI at http://localhost:3000
+- **Local Dev** (`make dev`): Hot-reload development with Vite - faster iteration for development
+
+See [DEPLOYMENT_MODES.md](docs/DEPLOYMENT_MODES.md) for detailed comparison.
+
 ---
 
 ## Overview
