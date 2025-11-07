@@ -261,7 +261,7 @@ export const ServiceExplorer: React.FC<ServiceExplorerProps> = ({
                           )}
                           {metric.labels && Object.keys(metric.labels).length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-2">
-                              {Object.entries(metric.labels).map(([key, value]) => (
+                              {Object.entries(metric.labels).map(([key]) => (
                                 <span
                                   key={key}
                                   className="text-xs px-1 py-0.5 bg-gray-700 text-gray-400 rounded"
