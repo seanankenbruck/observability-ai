@@ -138,7 +138,7 @@ export const QueryHistory: React.FC<QueryHistoryProps> = ({
           </div>
         ) : (
           <div className="space-y-4">
-            {filteredPairs.map((pair, index) => (
+            {filteredPairs.map((pair) => (
               <div
                 key={pair.user.id}
                 className="bg-gray-800 border border-gray-600 rounded-lg p-4 hover:bg-gray-750 transition-colors"
