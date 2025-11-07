@@ -126,12 +126,6 @@ func (e *EnhancedError) WithSuggestion(suggestion string) *EnhancedError {
 	return e
 }
 
-// WithDocumentation adds a link to relevant documentation
-func (e *EnhancedError) WithDocumentation(url string) *EnhancedError {
-	e.Documentation = url
-	return e
-}
-
 // WithMetadata adds additional metadata to the error
 func (e *EnhancedError) WithMetadata(key string, value interface{}) *EnhancedError {
 	if e.Metadata == nil {
@@ -147,8 +141,7 @@ func (e *EnhancedError) WithMetadata(key string, value interface{}) *EnhancedErr
 func NewIntentClassificationError(err error, query string) *EnhancedError {
 	return Wrap(err, ErrCodeIntentClassification, "Failed to classify query intent").
 		WithDetails(fmt.Sprintf("Could not determine the intent of query: '%s'", query)).
-		WithSuggestion("Try rephrasing your query to be more specific. For example: 'Show error rate for my-service' or 'What is the latency for api-gateway?'").
-		WithDocumentation("https://docs.example.com/query-examples")
+		WithSuggestion("Try rephrasing your query to be more specific. For example: 'Show error rate for my-service' or 'What is the latency for api-gateway?'")
 }
 
 // NewEmbeddingGenerationError creates an error for embedding generation failures
@@ -163,40 +156,35 @@ func NewEmbeddingGenerationError(err error) *EnhancedError {
 func NewQueryGenerationError(err error) *EnhancedError {
 	return Wrap(err, ErrCodeQueryGeneration, "Failed to generate PromQL query").
 		WithDetails("The AI was unable to convert your natural language query to PromQL").
-		WithSuggestion("Try simplifying your query or being more specific about the metrics you want to query.").
-		WithDocumentation("https://docs.example.com/query-guide")
+		WithSuggestion("Try simplifying your query or being more specific about the metrics you want to query.")
 }
 
 // NewForbiddenMetricError creates an error for forbidden metric access
 func NewForbiddenMetricError(pattern string) *EnhancedError {
 	return New(ErrCodeForbiddenMetric, "Query contains forbidden metric").
 		WithDetails(fmt.Sprintf("The query attempts to access metrics matching the forbidden pattern: %s", pattern)).
-		WithSuggestion("Metrics containing sensitive information (secrets, passwords, tokens, keys) cannot be queried directly. Please contact your administrator if you need access.").
-		WithDocumentation("https://docs.example.com/security/forbidden-metrics")
+		WithSuggestion("Metrics containing sensitive information (secrets, passwords, tokens, keys) cannot be queried directly. Please contact your administrator if you need access.")
 }
 
 // NewExcessiveTimeRangeError creates an error for excessive time ranges
 func NewExcessiveTimeRangeError(timeRange string, maxAllowed string) *EnhancedError {
 	return New(ErrCodeExcessiveTimeRange, "Query time range exceeds maximum allowed").
 		WithDetails(fmt.Sprintf("The query requests data for %s, which exceeds the maximum allowed range of %s", timeRange, maxAllowed)).
-		WithSuggestion(fmt.Sprintf("Please reduce the time range to %s or less. For historical analysis, consider using aggregated data or downsampled metrics.", maxAllowed)).
-		WithDocumentation("https://docs.example.com/query-limits")
+		WithSuggestion(fmt.Sprintf("Please reduce the time range to %s or less. For historical analysis, consider using aggregated data or downsampled metrics.", maxAllowed))
 }
 
 // NewHighCardinalityError creates an error for high cardinality queries
 func NewHighCardinalityError() *EnhancedError {
 	return New(ErrCodeHighCardinality, "Query may produce high cardinality results").
 		WithDetails("The query structure suggests it could return an excessive number of time series").
-		WithSuggestion("Add more specific label filters or use aggregation functions like sum(), avg(), or max(). Avoid queries that group by no labels or use 'without ()'.").
-		WithDocumentation("https://docs.example.com/best-practices/cardinality")
+		WithSuggestion("Add more specific label filters or use aggregation functions like sum(), avg(), or max(). Avoid queries that group by no labels or use 'without ()'.")
 }
 
 // NewExpensiveOperationError creates an error for expensive operations
 func NewExpensiveOperationError(operation string) *EnhancedError {
 	return New(ErrCodeExpensiveOperation, "Query contains potentially expensive operation").
 		WithDetails(fmt.Sprintf("The query uses the '%s' operation which can be resource-intensive", operation)).
-		WithSuggestion("Consider rewriting your query to avoid expensive operations like 'group_left', 'group_right', or 'absent()'. Use simpler aggregations when possible.").
-		WithDocumentation("https://docs.example.com/best-practices/query-performance")
+		WithSuggestion("Consider rewriting your query to avoid expensive operations like 'group_left', 'group_right', or 'absent()'. Use simpler aggregations when possible.")
 }
 
 // NewServiceNotFoundError creates an error for service not found
@@ -204,7 +192,6 @@ func NewServiceNotFoundError(serviceName string) *EnhancedError {
 	return New(ErrCodeServiceNotFound, "Service not found").
 		WithDetails(fmt.Sprintf("No service found with name: %s", serviceName)).
 		WithSuggestion("Check the service name for typos. Use the /api/v1/services endpoint to see all available services, or /api/v1/services/search?q=<name> to search for services.").
-		WithDocumentation("https://docs.example.com/api-reference/services").
 		WithMetadata("service_name", serviceName)
 }
 
@@ -212,8 +199,7 @@ func NewServiceNotFoundError(serviceName string) *EnhancedError {
 func NewInvalidCredentialsError() *EnhancedError {
 	return New(ErrCodeInvalidCredentials, "Invalid username or password").
 		WithDetails("Authentication failed with the provided credentials").
-		WithSuggestion("Please check your username and password and try again. If you've forgotten your password, contact your administrator.").
-		WithDocumentation("https://docs.example.com/auth/login")
+		WithSuggestion("Please check your username and password and try again. If you've forgotten your password, contact your administrator.")
 }
 
 // NewTokenCreationError creates an error for token creation failures
@@ -236,16 +222,14 @@ func NewSessionCreationError(err error) *EnhancedError {
 func NewNotAuthenticatedError() *EnhancedError {
 	return New(ErrCodeNotAuthenticated, "Authentication required").
 		WithDetails("This endpoint requires authentication").
-		WithSuggestion("Please log in using the /api/v1/auth/login endpoint, or include a valid API key in the 'X-API-Key' header.").
-		WithDocumentation("https://docs.example.com/auth/overview")
+		WithSuggestion("Please log in using the /api/v1/auth/login endpoint, or include a valid API key in the 'X-API-Key' header.")
 }
 
 // NewInvalidInputError creates an error for invalid input
 func NewInvalidInputError(field string, reason string) *EnhancedError {
 	return New(ErrCodeInvalidInput, "Invalid input").
 		WithDetails(fmt.Sprintf("Field '%s' is invalid: %s", field, reason)).
-		WithSuggestion("Please check the API documentation for the expected format and try again.").
-		WithDocumentation("https://docs.example.com/api-reference")
+		WithSuggestion("Please check the API documentation for the expected format and try again.")
 }
 
 // NewDatabaseConnectionError creates an error for database connection failures
