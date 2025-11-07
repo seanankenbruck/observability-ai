@@ -10,7 +10,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
+	"github.com/seanankenbruck/observability-ai/internal/errors"
 	"github.com/seanankenbruck/observability-ai/internal/llm"
+	"github.com/seanankenbruck/observability-ai/internal/observability"
 	"github.com/seanankenbruck/observability-ai/internal/semantic"
 )
 
@@ -41,6 +43,8 @@ type QueryProcessor struct {
 	safetyChecker    *SafetyChecker
 	cache            *redis.Client
 	intentClassifier *IntentClassifier
+	logger           *observability.Logger
+	healthChecker    *observability.HealthChecker
 }
 
 // NewQueryProcessor creates a new query processor instance
@@ -51,58 +55,119 @@ func NewQueryProcessor(llmClient llm.Client, semanticMapper semantic.Mapper, cac
 		cache:            cache,
 		safetyChecker:    NewSafetyChecker(),
 		intentClassifier: NewIntentClassifier(),
+		logger:           observability.NewLogger("query-processor"),
 	}
+}
+
+// SetHealthChecker sets the health checker for the processor
+func (qp *QueryProcessor) SetHealthChecker(healthChecker *observability.HealthChecker) {
+	qp.healthChecker = healthChecker
 }
 
 // ProcessQuery handles the main query processing logic
 func (qp *QueryProcessor) ProcessQuery(ctx context.Context, req *QueryRequest) (*QueryResponse, error) {
 	start := time.Now()
 
+	// Log query start
+	qp.logger.Info(ctx, "Processing query", map[string]interface{}{
+		"query":      req.Query,
+		"time_range": req.TimeRange,
+	})
+
+	var errorType string
+	var response *QueryResponse
+	var processingErr error
+
+	defer func() {
+		// Record metrics at the end
+		duration := time.Since(start)
+		success := processingErr == nil
+		cached := response != nil && response.CacheHit
+		observability.RecordQueryMetrics(duration, success, cached, errorType)
+
+		if processingErr != nil {
+			qp.logger.Error(ctx, "Query processing failed", processingErr, map[string]interface{}{
+				"query":       req.Query,
+				"duration_ms": duration.Milliseconds(),
+				"error_type":  errorType,
+			})
+		} else {
+			qp.logger.Info(ctx, "Query processed successfully", map[string]interface{}{
+				"query":       req.Query,
+				"duration_ms": duration.Milliseconds(),
+				"cache_hit":   cached,
+				"confidence":  response.Confidence,
+			})
+		}
+	}()
+
 	// Check cache first
 	if cachedResult, err := qp.getCachedResult(ctx, req.Query); err == nil {
+		qp.logger.Debug(ctx, "Cache hit for query", map[string]interface{}{
+			"query": req.Query,
+		})
 		cachedResult.CacheHit = true
 		cachedResult.ProcessingTime = time.Since(start)
+		response = cachedResult
 		return cachedResult, nil
 	}
 
 	// Classify intent
 	intent, err := qp.intentClassifier.ClassifyIntent(req.Query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to classify intent: %w", err)
+		errorType = "intent_classification"
+		processingErr = errors.NewIntentClassificationError(err, req.Query)
+		return nil, processingErr
 	}
 
 	// Generate embeddings for semantic search
 	embedding, err := qp.llmClient.GetEmbedding(ctx, req.Query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get embedding: %w", err)
+		errorType = "embedding_generation"
+		processingErr = errors.NewEmbeddingGenerationError(err)
+		return nil, processingErr
 	}
 
 	// Find similar queries
 	similarQueries, err := qp.semanticMapper.FindSimilarQueries(ctx, embedding)
 	if err != nil {
 		// Log warning but don't fail - similar queries are optional
-		fmt.Printf("Warning: failed to find similar queries: %v\n", err)
+		qp.logger.Warn(ctx, "Failed to find similar queries", map[string]interface{}{
+			"error": err.Error(),
+		})
 	}
 
 	// Build enhanced prompt
 	prompt, err := qp.buildPrompt(ctx, req, intent, similarQueries)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build prompt: %w", err)
+		errorType = "prompt_building"
+		processingErr = errors.Wrap(err, errors.ErrCodePromptBuilding, "Failed to build prompt for query generation").
+			WithDetails("An error occurred while constructing the prompt for the AI model").
+			WithSuggestion("This is an internal error. Please try your query again.").
+			WithMetadata("retryable", true)
+		return nil, processingErr
 	}
 
 	// Generate PromQL using LLM
 	llmResponse, err := qp.llmClient.GenerateQuery(ctx, prompt)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate query: %w", err)
+		errorType = "query_generation"
+		processingErr = errors.NewQueryGenerationError(err)
+		return nil, processingErr
 	}
 
 	// Validate query safety
 	if err := qp.safetyChecker.ValidateQuery(llmResponse.PromQL); err != nil {
-		return nil, fmt.Errorf("query safety check failed: %w", err)
+		errorType = "safety_validation"
+		processingErr = err // Already an enhanced error from SafetyChecker
+		observability.GetGlobalMetrics().Inc(observability.MetricQuerySafetyViolation, map[string]string{
+			"error_type": errorType,
+		})
+		return nil, processingErr
 	}
 
 	// Build response
-	response := &QueryResponse{
+	response = &QueryResponse{
 		PromQL:         llmResponse.PromQL,
 		Explanation:    llmResponse.Explanation,
 		Confidence:     llmResponse.Confidence,
@@ -117,7 +182,9 @@ func (qp *QueryProcessor) ProcessQuery(ctx context.Context, req *QueryRequest) (
 
 	// Cache the result
 	if err := qp.cacheResult(ctx, req.Query, response); err != nil {
-		fmt.Printf("Warning: failed to cache result: %v\n", err)
+		qp.logger.Warn(ctx, "Failed to cache query result", map[string]interface{}{
+			"error": err.Error(),
+		})
 	}
 
 	return response, nil
@@ -240,11 +307,21 @@ func (qp *QueryProcessor) SetupRoutes(authMiddleware AuthMiddleware) *gin.Engine
 
 	// Public health check endpoint
 	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status":  "healthy",
-			"version": "1.0.0",
-			"service": "query-processor",
-		})
+		if qp.healthChecker != nil {
+			response := qp.healthChecker.GetHealthResponse(c.Request.Context())
+			statusCode := http.StatusOK
+			if response.Status == observability.HealthStatusUnhealthy {
+				statusCode = http.StatusServiceUnavailable
+			}
+			c.JSON(statusCode, response)
+		} else {
+			// Fallback for when health checker is not configured
+			c.JSON(http.StatusOK, gin.H{
+				"status":  "healthy",
+				"version": "1.0.0",
+				"service": "query-processor",
+			})
+		}
 	})
 
 	// Public API v1 health endpoint
@@ -269,13 +346,14 @@ func (qp *QueryProcessor) SetupRoutes(authMiddleware AuthMiddleware) *gin.Engine
 		api.POST("/query", func(c *gin.Context) {
 			var req QueryRequest
 			if err := c.ShouldBindJSON(&req); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				enhancedErr := errors.NewInvalidInputError("request body", err.Error())
+				c.JSON(http.StatusBadRequest, formatErrorResponse(enhancedErr))
 				return
 			}
 
 			response, err := qp.ProcessQuery(c.Request.Context(), &req)
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				c.JSON(getErrorStatusCode(err), formatErrorResponse(err))
 				return
 			}
 
@@ -298,8 +376,8 @@ func (qp *QueryProcessor) SetupRoutes(authMiddleware AuthMiddleware) *gin.Engine
 		api.GET("/suggestions", qp.handleGetSuggestions)
 	}
 
-	// Serve static files for the web interface (in production)
-	r.Static("/static", "./web/dist/assets")
+	// Serve static files for the web interface
+	r.Static("/assets", "./web/dist/assets")
 	r.StaticFile("/", "./web/dist/index.html")
 
 	return r
@@ -309,7 +387,8 @@ func (qp *QueryProcessor) SetupRoutes(authMiddleware AuthMiddleware) *gin.Engine
 func (qp *QueryProcessor) handleGetServices(c *gin.Context) {
 	services, err := qp.semanticMapper.GetServices(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		enhancedErr := errors.NewDatabaseQueryError(err, "fetching services")
+		c.JSON(http.StatusInternalServerError, formatErrorResponse(enhancedErr))
 		return
 	}
 	c.JSON(http.StatusOK, services)
@@ -320,7 +399,8 @@ func (qp *QueryProcessor) handleGetService(c *gin.Context) {
 	// For now, we'll search by name since that's what we have
 	service, err := qp.semanticMapper.GetServiceByName(c.Request.Context(), serviceID, "default")
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
+		enhancedErr := errors.NewServiceNotFoundError(serviceID)
+		c.JSON(http.StatusNotFound, formatErrorResponse(enhancedErr))
 		return
 	}
 	c.JSON(http.StatusOK, service)
@@ -335,7 +415,8 @@ func (qp *QueryProcessor) handleSearchServices(c *gin.Context) {
 
 	services, err := qp.semanticMapper.SearchServices(c.Request.Context(), query)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		enhancedErr := errors.NewDatabaseQueryError(err, "searching services")
+		c.JSON(http.StatusInternalServerError, formatErrorResponse(enhancedErr))
 		return
 	}
 	c.JSON(http.StatusOK, services)
@@ -345,7 +426,8 @@ func (qp *QueryProcessor) handleGetServiceMetrics(c *gin.Context) {
 	serviceID := c.Param("id")
 	metrics, err := qp.semanticMapper.GetMetrics(c.Request.Context(), serviceID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		enhancedErr := errors.NewDatabaseQueryError(err, "fetching metrics for service")
+		c.JSON(http.StatusInternalServerError, formatErrorResponse(enhancedErr))
 		return
 	}
 	c.JSON(http.StatusOK, metrics)
@@ -355,7 +437,8 @@ func (qp *QueryProcessor) handleGetAllMetrics(c *gin.Context) {
 	// Get all services first, then get metrics for each
 	services, err := qp.semanticMapper.GetServices(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		enhancedErr := errors.NewDatabaseQueryError(err, "fetching all metrics")
+		c.JSON(http.StatusInternalServerError, formatErrorResponse(enhancedErr))
 		return
 	}
 
@@ -396,7 +479,8 @@ func (qp *QueryProcessor) handleGetHistory(c *gin.Context) {
 
 	queries, err := qp.semanticMapper.FindSimilarQueries(c.Request.Context(), emptyEmbedding)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		enhancedErr := errors.NewDatabaseQueryError(err, "fetching query history")
+		c.JSON(http.StatusInternalServerError, formatErrorResponse(enhancedErr))
 		return
 	}
 
@@ -412,4 +496,66 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// formatErrorResponse formats an error into a user-friendly response
+func formatErrorResponse(err error) gin.H {
+	// Check if it's an EnhancedError
+	if enhancedErr, ok := err.(*errors.EnhancedError); ok {
+		response := gin.H{
+			"error": gin.H{
+				"code":    enhancedErr.Code,
+				"message": enhancedErr.Message,
+			},
+		}
+
+		if enhancedErr.Details != "" {
+			response["error"].(gin.H)["details"] = enhancedErr.Details
+		}
+
+		if enhancedErr.Suggestion != "" {
+			response["error"].(gin.H)["suggestion"] = enhancedErr.Suggestion
+		}
+
+		if enhancedErr.Documentation != "" {
+			response["error"].(gin.H)["documentation"] = enhancedErr.Documentation
+		}
+
+		if len(enhancedErr.Metadata) > 0 {
+			response["error"].(gin.H)["metadata"] = enhancedErr.Metadata
+		}
+
+		return response
+	}
+
+	// Fallback for regular errors
+	return gin.H{
+		"error": gin.H{
+			"code":    "INTERNAL_ERROR",
+			"message": err.Error(),
+		},
+	}
+}
+
+// getErrorStatusCode returns the appropriate HTTP status code for an error
+func getErrorStatusCode(err error) int {
+	if enhancedErr, ok := err.(*errors.EnhancedError); ok {
+		switch enhancedErr.Code {
+		case errors.ErrCodeInvalidInput, errors.ErrCodeMissingRequired, errors.ErrCodeInvalidDuration:
+			return http.StatusBadRequest
+		case errors.ErrCodeInvalidCredentials, errors.ErrCodeNotAuthenticated:
+			return http.StatusUnauthorized
+		case errors.ErrCodeInsufficientPerms:
+			return http.StatusForbidden
+		case errors.ErrCodeServiceNotFound:
+			return http.StatusNotFound
+		case errors.ErrCodeSafetyValidation, errors.ErrCodeForbiddenMetric,
+			errors.ErrCodeExcessiveTimeRange, errors.ErrCodeHighCardinality,
+			errors.ErrCodeExpensiveOperation, errors.ErrCodeTooManyNested:
+			return http.StatusBadRequest
+		default:
+			return http.StatusInternalServerError
+		}
+	}
+	return http.StatusInternalServerError
 }

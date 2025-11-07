@@ -4,14 +4,17 @@ import (
 	"context"
 	"log"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
 	"github.com/seanankenbruck/observability-ai/internal/auth"
 	"github.com/seanankenbruck/observability-ai/internal/llm"
 	"github.com/seanankenbruck/observability-ai/internal/mimir"
+	"github.com/seanankenbruck/observability-ai/internal/observability"
 	"github.com/seanankenbruck/observability-ai/internal/processor"
 	"github.com/seanankenbruck/observability-ai/internal/semantic"
 )
@@ -94,19 +97,59 @@ func main() {
 		}
 	}()
 
+	// Initialize observability
+	logger := observability.NewLogger("main")
+	healthChecker := observability.NewHealthChecker()
+
+	// Register health checks
+	healthChecker.Register("database", observability.DatabaseHealthCheck(func(ctx context.Context) error {
+		return semanticMapper.Ping(ctx)
+	}))
+
+	healthChecker.Register("redis", observability.RedisHealthCheck(func(ctx context.Context) error {
+		return rdb.Ping(ctx).Err()
+	}))
+
+	healthChecker.Register("memory", observability.MemoryHealthCheck(func() (uint64, uint64) {
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+		return m.Alloc, m.Sys
+	}))
+
 	// Create query processor
 	qp := processor.NewQueryProcessor(llmClient, semanticMapper, rdb)
+	qp.SetHealthChecker(healthChecker)
 
 	// Setup Gin router with authentication
 	router := qp.SetupRoutes(authManager)
+
+	// Add observability middleware
+	router.Use(observability.RecoveryMiddleware(logger))
+	router.Use(observability.RequestLoggingMiddleware(logger))
+	router.Use(observability.MetricsMiddleware())
+
+	// Add metrics endpoint
+	router.GET("/metrics", func(c *gin.Context) {
+		metrics := observability.GetGlobalMetrics().GetAll()
+		c.JSON(200, gin.H{
+			"metrics":   metrics,
+			"timestamp": time.Now(),
+		})
+	})
+
+	// Note: /health endpoint is registered in processor.SetupRoutes()
 
 	// Add auth handlers for login/logout/user management
 	authHandlers := auth.NewAuthHandlers(authManager)
 	authHandlers.SetupRoutes(router.Group("/api/v1"))
 
 	port := getEnv("PORT", "8080")
-	log.Printf("Query processor starting on port %s", port)
+	logger.Info(context.Background(), "Query processor starting", map[string]interface{}{
+		"port":    port,
+		"version": "1.0.0",
+	})
 	if err := router.Run(":" + port); err != nil {
+		logger.Error(context.Background(), "Failed to start server", err, nil)
 		log.Fatal("Failed to start server:", err)
 	}
 }
