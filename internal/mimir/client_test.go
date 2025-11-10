@@ -781,3 +781,258 @@ func TestClientContextCancellation(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "context canceled")
 }
+
+// TestClient_QueryInstant tests the enhanced QueryInstant method
+func TestClient_QueryInstant(t *testing.T) {
+	t.Run("successful instant query with parsed results", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/prometheus/api/v1/query", r.URL.Path)
+			assert.Equal(t, "up", r.URL.Query().Get("query"))
+
+			response := QueryResponse{
+				Status: "success",
+				Data: struct {
+					ResultType string      `json:"resultType"`
+					Result     interface{} `json:"result"`
+				}{
+					ResultType: "vector",
+					Result: []interface{}{
+						map[string]interface{}{
+							"metric": map[string]interface{}{
+								"job":      "api",
+								"instance": "localhost:8080",
+							},
+							"value": []interface{}{float64(1234567890), "1"},
+						},
+					},
+				},
+			}
+
+			json.NewEncoder(w).Encode(response)
+		}))
+		defer server.Close()
+
+		client := NewClient(server.URL, AuthConfig{Type: "none"}, 30*time.Second)
+		result, err := client.QueryInstant(context.Background(), "up", time.Time{})
+
+		require.NoError(t, err)
+		assert.Equal(t, "vector", result.ResultType)
+
+		vectors, ok := result.Data.([]InstantVector)
+		require.True(t, ok)
+		require.Len(t, vectors, 1)
+		assert.Equal(t, "api", vectors[0].Metric["job"])
+		assert.Equal(t, 1.0, vectors[0].Val)
+	})
+
+	t.Run("instant query with warnings", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			response := QueryResponse{
+				Status: "success",
+				Data: struct {
+					ResultType string      `json:"resultType"`
+					Result     interface{} `json:"result"`
+				}{
+					ResultType: "vector",
+					Result:     []interface{}{},
+				},
+				Warnings: []string{"Query may be expensive", "High cardinality detected"},
+			}
+
+			json.NewEncoder(w).Encode(response)
+		}))
+		defer server.Close()
+
+		client := NewClient(server.URL, AuthConfig{Type: "none"}, 30*time.Second)
+		result, err := client.QueryInstant(context.Background(), "metric{label=~\".*\"}", time.Time{})
+
+		require.NoError(t, err)
+		assert.Len(t, result.Warnings, 2)
+		assert.Contains(t, result.Warnings, "Query may be expensive")
+	})
+
+	t.Run("instant query timeout", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			time.Sleep(2 * time.Second)
+		}))
+		defer server.Close()
+
+		client := NewClient(server.URL, AuthConfig{Type: "none"}, 100*time.Millisecond)
+		_, err := client.QueryInstant(context.Background(), "up", time.Time{})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "timeout")
+	})
+}
+
+// TestClient_QueryRangeWithResult tests the enhanced QueryRangeWithResult method
+func TestClient_QueryRangeWithResult(t *testing.T) {
+	t.Run("successful range query with parsed results", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/prometheus/api/v1/query_range", r.URL.Path)
+			assert.NotEmpty(t, r.URL.Query().Get("start"))
+			assert.NotEmpty(t, r.URL.Query().Get("end"))
+			assert.NotEmpty(t, r.URL.Query().Get("step"))
+
+			response := QueryResponse{
+				Status: "success",
+				Data: struct {
+					ResultType string      `json:"resultType"`
+					Result     interface{} `json:"result"`
+				}{
+					ResultType: "matrix",
+					Result: []interface{}{
+						map[string]interface{}{
+							"metric": map[string]interface{}{
+								"job": "api",
+							},
+							"values": []interface{}{
+								[]interface{}{float64(1234567890), "10"},
+								[]interface{}{float64(1234567900), "20"},
+								[]interface{}{float64(1234567910), "30"},
+							},
+						},
+					},
+				},
+			}
+
+			json.NewEncoder(w).Encode(response)
+		}))
+		defer server.Close()
+
+		client := NewClient(server.URL, AuthConfig{Type: "none"}, 30*time.Second)
+		start := time.Now().Add(-1 * time.Hour)
+		end := time.Now()
+		step := 15 * time.Second
+
+		result, err := client.QueryRangeWithResult(context.Background(), "up", start, end, step)
+
+		require.NoError(t, err)
+		assert.Equal(t, "matrix", result.ResultType)
+
+		matrices, ok := result.Data.([]RangeVector)
+		require.True(t, ok)
+		require.Len(t, matrices, 1)
+		assert.Len(t, matrices[0].Values, 3)
+	})
+
+	t.Run("range query error handling", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			response := QueryResponse{
+				Status:    "error",
+				Error:     "query timeout",
+				ErrorType: "timeout",
+			}
+
+			json.NewEncoder(w).Encode(response)
+		}))
+		defer server.Close()
+
+		client := NewClient(server.URL, AuthConfig{Type: "none"}, 30*time.Second)
+		start := time.Now().Add(-1 * time.Hour)
+		end := time.Now()
+
+		_, err := client.QueryRangeWithResult(context.Background(), "huge_query", start, end, 1*time.Second)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "query timeout")
+	})
+}
+
+// TestParseQueryResult tests the query result parsing function
+func TestParseQueryResult(t *testing.T) {
+	t.Run("parse vector result", func(t *testing.T) {
+		qr := &QueryResponse{
+			Status: "success",
+			Data: struct {
+				ResultType string      `json:"resultType"`
+				Result     interface{} `json:"result"`
+			}{
+				ResultType: "vector",
+				Result: []interface{}{
+					map[string]interface{}{
+						"metric": map[string]interface{}{
+							"job": "api",
+						},
+						"value": []interface{}{float64(1234567890), "42.5"},
+					},
+				},
+			},
+		}
+
+		result, err := parseQueryResult(qr)
+		require.NoError(t, err)
+		assert.Equal(t, "vector", result.ResultType)
+
+		vectors, ok := result.Data.([]InstantVector)
+		require.True(t, ok)
+		require.Len(t, vectors, 1)
+		assert.Equal(t, 42.5, vectors[0].Val)
+	})
+
+	t.Run("parse matrix result", func(t *testing.T) {
+		qr := &QueryResponse{
+			Status: "success",
+			Data: struct {
+				ResultType string      `json:"resultType"`
+				Result     interface{} `json:"result"`
+			}{
+				ResultType: "matrix",
+				Result: []interface{}{
+					map[string]interface{}{
+						"metric": map[string]interface{}{
+							"job": "api",
+						},
+						"values": []interface{}{
+							[]interface{}{float64(1234567890), "10"},
+							[]interface{}{float64(1234567900), "20"},
+						},
+					},
+				},
+			},
+		}
+
+		result, err := parseQueryResult(qr)
+		require.NoError(t, err)
+		assert.Equal(t, "matrix", result.ResultType)
+
+		matrices, ok := result.Data.([]RangeVector)
+		require.True(t, ok)
+		require.Len(t, matrices, 1)
+		assert.Len(t, matrices[0].Values, 2)
+	})
+
+	t.Run("parse scalar result", func(t *testing.T) {
+		qr := &QueryResponse{
+			Status: "success",
+			Data: struct {
+				ResultType string      `json:"resultType"`
+				Result     interface{} `json:"result"`
+			}{
+				ResultType: "scalar",
+				Result:     []interface{}{float64(1234567890), "123.45"},
+			},
+		}
+
+		result, err := parseQueryResult(qr)
+		require.NoError(t, err)
+		assert.Equal(t, "scalar", result.ResultType)
+	})
+
+	t.Run("unsupported result type", func(t *testing.T) {
+		qr := &QueryResponse{
+			Status: "success",
+			Data: struct {
+				ResultType string      `json:"resultType"`
+				Result     interface{} `json:"result"`
+			}{
+				ResultType: "unknown",
+				Result:     nil,
+			},
+		}
+
+		_, err := parseQueryResult(qr)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported result type")
+	})
+}

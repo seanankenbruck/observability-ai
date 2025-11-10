@@ -12,6 +12,7 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/seanankenbruck/observability-ai/internal/errors"
 	"github.com/seanankenbruck/observability-ai/internal/llm"
+	"github.com/seanankenbruck/observability-ai/internal/mimir"
 	"github.com/seanankenbruck/observability-ai/internal/observability"
 	"github.com/seanankenbruck/observability-ai/internal/semantic"
 )
@@ -26,36 +27,74 @@ type QueryRequest struct {
 
 // QueryResponse represents the processed query result
 type QueryResponse struct {
-	PromQL         string                 `json:"promql"`
-	Explanation    string                 `json:"explanation"`
-	Confidence     float64                `json:"confidence"`
-	Suggestions    []string               `json:"suggestions,omitempty"`
-	EstimatedCost  int                    `json:"estimated_cost"`
-	CacheHit       bool                   `json:"cache_hit"`
-	ProcessingTime time.Duration          `json:"processing_time"`
-	Metadata       map[string]interface{} `json:"metadata,omitempty"`
+	Query             string           `json:"query,omitempty"`
+	PromQL            string           `json:"promql"`
+	Explanation       string           `json:"explanation"`
+	Confidence        float64          `json:"confidence,omitempty"`
+	Suggestions       []string         `json:"suggestions,omitempty"`
+	Results           *QueryResults    `json:"results,omitempty"`           // Enhanced query results
+	ResultMetadata    *ResultMetadata  `json:"result_metadata,omitempty"`   // Visualization hints
+	Cached            bool             `json:"cached"`
+	EstimatedCost     int              `json:"estimated_cost,omitempty"`
+	CacheHit          bool             `json:"cache_hit,omitempty"`
+	ProcessingTime    time.Duration    `json:"processing_time,omitempty"`
+	ExecutionTime     int64            `json:"execution_time_ms,omitempty"`
+	Metadata          map[string]interface{}  `json:"metadata,omitempty"`
 }
 
 // QueryProcessor is the main service struct
 type QueryProcessor struct {
-	llmClient        llm.Client
-	semanticMapper   semantic.Mapper
-	safetyChecker    *SafetyChecker
-	cache            *redis.Client
-	intentClassifier *IntentClassifier
-	logger           *observability.Logger
-	healthChecker    *observability.HealthChecker
+	llmClient         llm.Client
+	semanticMapper    semantic.Mapper
+	safetyChecker     *SafetyChecker
+	cache             *redis.Client
+	intentClassifier  *IntentClassifier
+	logger            *observability.Logger
+	healthChecker     *observability.HealthChecker
+	mimirClient       MimirClient
+	resultProcessor   *ResultProcessor
+	metadataGenerator *MetadataGenerator
+}
+
+// MimirClient defines the interface for executing PromQL queries
+type MimirClient interface {
+	Query(ctx context.Context, query string, timestamp time.Time) (*mimir.QueryResponse, error)
+	QueryInstant(ctx context.Context, query string, timestamp time.Time) (*mimir.QueryResult, error)
+	QueryRangeWithResult(ctx context.Context, query string, start, end time.Time, step time.Duration) (*mimir.QueryResult, error)
+}
+
+// ProcessorConfig holds configuration for the query processor
+type ProcessorConfig struct {
+	MaxResultSamples    int
+	MaxResultTimePoints int
 }
 
 // NewQueryProcessor creates a new query processor instance
-func NewQueryProcessor(llmClient llm.Client, semanticMapper semantic.Mapper, cache *redis.Client) *QueryProcessor {
+func NewQueryProcessor(llmClient llm.Client, semanticMapper semantic.Mapper, cache *redis.Client, mimirClient MimirClient, config ProcessorConfig) *QueryProcessor {
+	// Create result processor with configured limits
+	resultProcessor := &ResultProcessor{
+		maxSamples:    config.MaxResultSamples,
+		maxTimePoints: config.MaxResultTimePoints,
+	}
+
+	// Set defaults if not configured
+	if resultProcessor.maxSamples == 0 {
+		resultProcessor.maxSamples = MaxSamplesDefault
+	}
+	if resultProcessor.maxTimePoints == 0 {
+		resultProcessor.maxTimePoints = MaxTimePoints
+	}
+
 	return &QueryProcessor{
-		llmClient:        llmClient,
-		semanticMapper:   semanticMapper,
-		cache:            cache,
-		safetyChecker:    NewSafetyChecker(),
-		intentClassifier: NewIntentClassifier(),
-		logger:           observability.NewLogger("query-processor"),
+		llmClient:         llmClient,
+		semanticMapper:    semanticMapper,
+		cache:             cache,
+		mimirClient:       mimirClient,
+		safetyChecker:     NewSafetyChecker(),
+		intentClassifier:  NewIntentClassifier(),
+		logger:            observability.NewLogger("query-processor"),
+		resultProcessor:   resultProcessor,
+		metadataGenerator: NewMetadataGenerator(),
 	}
 }
 
@@ -166,14 +205,46 @@ func (qp *QueryProcessor) ProcessQuery(ctx context.Context, req *QueryRequest) (
 		return nil, processingErr
 	}
 
+	// Execute the PromQL query against Mimir to get actual results
+	var processedResults *QueryResults
+	var resultMetadata *ResultMetadata
+	if qp.mimirClient != nil {
+		// Use QueryInstant for better result handling
+		mimirResult, err := qp.mimirClient.QueryInstant(ctx, llmResponse.PromQL, time.Time{})
+		if err != nil {
+			qp.logger.Warn(ctx, "Failed to execute PromQL query against Mimir", map[string]interface{}{
+				"error":  err.Error(),
+				"promql": llmResponse.PromQL,
+			})
+			// Don't fail the entire request - just proceed without results
+		} else {
+			// Process results with the result processor
+			processedResults, err = qp.resultProcessor.ProcessResults(mimirResult)
+			if err != nil {
+				qp.logger.Warn(ctx, "Failed to process query results", map[string]interface{}{
+					"error":  err.Error(),
+					"promql": llmResponse.PromQL,
+				})
+			} else {
+				// Generate metadata for visualization hints
+				resultMetadata = qp.metadataGenerator.GenerateMetadata(llmResponse.PromQL, processedResults)
+			}
+		}
+	}
+
 	// Build response
 	response = &QueryResponse{
+		Query:          req.Query,
 		PromQL:         llmResponse.PromQL,
 		Explanation:    llmResponse.Explanation,
 		Confidence:     llmResponse.Confidence,
-		EstimatedCost:  qp.estimateQueryCost(llmResponse.PromQL),
+		Results:        processedResults,
+		ResultMetadata: resultMetadata,
+		Cached:         false,
 		CacheHit:       false,
+		EstimatedCost:  qp.estimateQueryCost(llmResponse.PromQL),
 		ProcessingTime: time.Since(start),
+		ExecutionTime:  time.Since(start).Milliseconds(),
 		Metadata: map[string]interface{}{
 			"intent":          intent,
 			"similar_queries": len(similarQueries),

@@ -28,8 +28,30 @@ type QueryResponse struct {
 		ResultType string      `json:"resultType"`
 		Result     interface{} `json:"result"`
 	} `json:"data"`
-	Error     string `json:"error,omitempty"`
-	ErrorType string `json:"errorType,omitempty"`
+	Error     string   `json:"error,omitempty"`
+	ErrorType string   `json:"errorType,omitempty"`
+	Warnings  []string `json:"warnings,omitempty"`
+}
+
+// QueryResult represents a processed query result supporting both instant and range queries
+type QueryResult struct {
+	ResultType string      // "vector", "matrix", "scalar", "string"
+	Data       interface{} // Can be []InstantVector or []RangeVector
+	Warnings   []string
+}
+
+// InstantVector represents a single metric value at a point in time
+type InstantVector struct {
+	Metric    map[string]string `json:"metric"`
+	Value     [2]interface{}    `json:"value"` // [timestamp, value_string]
+	Timestamp float64           `json:"-"`     // Parsed timestamp
+	Val       float64           `json:"-"`     // Parsed value
+}
+
+// RangeVector represents a time series with multiple values
+type RangeVector struct {
+	Metric map[string]string `json:"metric"`
+	Values [][2]interface{}  `json:"values"` // [[timestamp, value_string], ...]
 }
 
 // MetricMetadata represents metadata for a metric
@@ -41,16 +63,24 @@ type MetricMetadata struct {
 
 // Client is an HTTP client for communicating with Mimir/Prometheus API
 type Client struct {
-	endpoint   string
-	auth       AuthConfig
-	httpClient *http.Client
+	endpoint     string
+	auth         AuthConfig
+	httpClient   *http.Client
+	queryTimeout time.Duration // Default timeout for query operations
 }
 
 // NewClient creates a new Mimir client
 func NewClient(endpoint string, auth AuthConfig, timeout time.Duration) *Client {
+	// Default query timeout to 30s if not specified
+	queryTimeout := 30 * time.Second
+	if timeout > 0 {
+		queryTimeout = timeout
+	}
+
 	return &Client{
-		endpoint: strings.TrimSuffix(endpoint, "/"),
-		auth:     auth,
+		endpoint:     strings.TrimSuffix(endpoint, "/"),
+		auth:         auth,
+		queryTimeout: queryTimeout,
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
@@ -96,6 +126,157 @@ func (c *Client) doRequest(ctx context.Context, method, path string, params url.
 	return resp, nil
 }
 
+// parseQueryResult converts QueryResponse to QueryResult with proper type handling
+func parseQueryResult(qr *QueryResponse) (*QueryResult, error) {
+	result := &QueryResult{
+		ResultType: qr.Data.ResultType,
+		Warnings:   qr.Warnings,
+	}
+
+	// Handle different result types
+	switch qr.Data.ResultType {
+	case "vector":
+		// Instant vector query result
+		vectors := []InstantVector{}
+		if resultArray, ok := qr.Data.Result.([]interface{}); ok {
+			for _, item := range resultArray {
+				if itemMap, ok := item.(map[string]interface{}); ok {
+					vector := InstantVector{}
+
+					// Parse metric labels
+					if metric, ok := itemMap["metric"].(map[string]interface{}); ok {
+						vector.Metric = make(map[string]string)
+						for k, v := range metric {
+							if strVal, ok := v.(string); ok {
+								vector.Metric[k] = strVal
+							}
+						}
+					}
+
+					// Parse value [timestamp, value_string]
+					if value, ok := itemMap["value"].([]interface{}); ok && len(value) == 2 {
+						vector.Value = [2]interface{}{value[0], value[1]}
+
+						// Parse timestamp
+						if ts, ok := value[0].(float64); ok {
+							vector.Timestamp = ts
+						}
+
+						// Parse value
+						if valStr, ok := value[1].(string); ok {
+							var val float64
+							fmt.Sscanf(valStr, "%f", &val)
+							vector.Val = val
+						}
+					}
+
+					vectors = append(vectors, vector)
+				}
+			}
+		}
+		result.Data = vectors
+
+	case "matrix":
+		// Range query result
+		matrices := []RangeVector{}
+		if resultArray, ok := qr.Data.Result.([]interface{}); ok {
+			for _, item := range resultArray {
+				if itemMap, ok := item.(map[string]interface{}); ok {
+					matrix := RangeVector{}
+
+					// Parse metric labels
+					if metric, ok := itemMap["metric"].(map[string]interface{}); ok {
+						matrix.Metric = make(map[string]string)
+						for k, v := range metric {
+							if strVal, ok := v.(string); ok {
+								matrix.Metric[k] = strVal
+							}
+						}
+					}
+
+					// Parse values [[timestamp, value_string], ...]
+					if values, ok := itemMap["values"].([]interface{}); ok {
+						matrix.Values = make([][2]interface{}, 0, len(values))
+						for _, val := range values {
+							if valArray, ok := val.([]interface{}); ok && len(valArray) == 2 {
+								matrix.Values = append(matrix.Values, [2]interface{}{valArray[0], valArray[1]})
+							}
+						}
+					}
+
+					matrices = append(matrices, matrix)
+				}
+			}
+		}
+		result.Data = matrices
+
+	case "scalar":
+		// Scalar result [timestamp, value_string]
+		result.Data = qr.Data.Result
+
+	case "string":
+		// String result [timestamp, value_string]
+		result.Data = qr.Data.Result
+
+	default:
+		return nil, fmt.Errorf("unsupported result type: %s", qr.Data.ResultType)
+	}
+
+	return result, nil
+}
+
+// QueryInstant executes an instant query (current values) and returns processed results
+func (c *Client) QueryInstant(ctx context.Context, query string, timestamp time.Time) (*QueryResult, error) {
+	// Add timeout to context if not already set
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.queryTimeout)
+		defer cancel()
+	}
+
+	params := url.Values{}
+	params.Set("query", query)
+	if !timestamp.IsZero() {
+		params.Set("time", fmt.Sprintf("%d", timestamp.Unix()))
+	}
+
+	resp, err := c.doRequest(ctx, "GET", "/prometheus/api/v1/query", params)
+	if err != nil {
+		// Handle context timeout
+		if ctx.Err() == context.DeadlineExceeded {
+			return nil, fmt.Errorf("query timeout after %v: %w", c.queryTimeout, err)
+		}
+		return nil, fmt.Errorf("query request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("query failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var queryResp QueryResponse
+	if err := json.Unmarshal(body, &queryResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if queryResp.Status != "success" {
+		return nil, fmt.Errorf("query error: %s - %s", queryResp.ErrorType, queryResp.Error)
+	}
+
+	// Parse the response into QueryResult
+	result, err := parseQueryResult(&queryResp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse query result: %w", err)
+	}
+
+	return result, nil
+}
+
 // Query executes an instant PromQL query
 func (c *Client) Query(ctx context.Context, query string, timestamp time.Time) (*QueryResponse, error) {
 	params := url.Values{}
@@ -131,7 +312,7 @@ func (c *Client) Query(ctx context.Context, query string, timestamp time.Time) (
 	return &queryResp, nil
 }
 
-// QueryRange executes a range PromQL query
+// QueryRange executes a range PromQL query (deprecated - use QueryRangeWithResult)
 func (c *Client) QueryRange(ctx context.Context, query string, start, end time.Time, step time.Duration) (*QueryResponse, error) {
 	params := url.Values{}
 	params.Set("query", query)
@@ -164,6 +345,58 @@ func (c *Client) QueryRange(ctx context.Context, query string, start, end time.T
 	}
 
 	return &queryResp, nil
+}
+
+// QueryRangeWithResult executes a range query (time series) and returns processed results
+func (c *Client) QueryRangeWithResult(ctx context.Context, query string, start, end time.Time, step time.Duration) (*QueryResult, error) {
+	// Add timeout to context if not already set
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.queryTimeout)
+		defer cancel()
+	}
+
+	params := url.Values{}
+	params.Set("query", query)
+	params.Set("start", fmt.Sprintf("%d", start.Unix()))
+	params.Set("end", fmt.Sprintf("%d", end.Unix()))
+	params.Set("step", fmt.Sprintf("%d", int(step.Seconds())))
+
+	resp, err := c.doRequest(ctx, "GET", "/prometheus/api/v1/query_range", params)
+	if err != nil {
+		// Handle context timeout
+		if ctx.Err() == context.DeadlineExceeded {
+			return nil, fmt.Errorf("query_range timeout after %v: %w", c.queryTimeout, err)
+		}
+		return nil, fmt.Errorf("query_range request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("query_range failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var queryResp QueryResponse
+	if err := json.Unmarshal(body, &queryResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if queryResp.Status != "success" {
+		return nil, fmt.Errorf("query_range error: %s - %s", queryResp.ErrorType, queryResp.Error)
+	}
+
+	// Parse the response into QueryResult
+	result, err := parseQueryResult(&queryResp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse query_range result: %w", err)
+	}
+
+	return result, nil
 }
 
 // GetMetricNames retrieves all metric names from Mimir
