@@ -233,7 +233,10 @@ export const QueryHistory: React.FC<QueryHistoryProps> = ({
                     {/* Error Display */}
                     {pair.assistant.error && (
                       <div className="mt-2 p-2 bg-red-900/30 border border-red-700 rounded text-red-300 text-sm">
-                        <span className="font-medium">Error:</span> {pair.assistant.error}
+                        <span className="font-medium">Error:</span>{' '}
+                        {typeof pair.assistant.error === 'string'
+                          ? pair.assistant.error
+                          : pair.assistant.error.message}
                       </div>
                     )}
                   </div>
