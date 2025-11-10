@@ -43,7 +43,16 @@ class ApiClient {
         const errorData: ApiError = await response.json().catch(() => ({
           error: `HTTP ${response.status}: ${response.statusText}`,
         }));
-        throw new Error(errorData.error || `Request failed with status ${response.status}`);
+
+        // If error is a structured error object, throw it as-is
+        if (typeof errorData.error === 'object' && errorData.error !== null) {
+          const structuredError = new Error(errorData.error.message || 'Request failed');
+          (structuredError as any).errorDetails = errorData.error;
+          throw structuredError;
+        }
+
+        // Otherwise, throw a simple error
+        throw new Error(errorData.error as string || `Request failed with status ${response.status}`);
       }
 
       return await response.json();
@@ -133,7 +142,10 @@ export const getErrorMessage = (error: unknown): string => {
     return error.message;
   }
   if (isApiError(error)) {
-    return error.error;
+    if (typeof error.error === 'string') {
+      return error.error;
+    }
+    return error.error.message;
   }
   return 'An unexpected error occurred';
 };
