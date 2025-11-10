@@ -10,7 +10,7 @@ A natural language interface for querying Prometheus/Mimir metrics. Ask question
 
 **The Problem:** PromQL is powerful but has a steep learning curve. Writing queries requires memorizing syntax, understanding aggregation functions, and knowing exact metric names. Simple questions take minutes to translate into working queries.
 
-**The Solution:** Ask questions naturally. Observability AI translates your intent into accurate PromQL, executes it against your metrics, and returns the results—all in seconds.
+**The Solution:** Ask questions naturally. Observability AI translates your intent into accurate PromQL, executes it against your metrics, and returns the resulting query with additional metadata in seconds.
 
 ### Before vs After
 
@@ -27,7 +27,7 @@ A natural language interface for querying Prometheus/Mimir metrics. Ask question
 "What's the CPU usage for the auth service?"
 → 2 seconds
 → Accurate PromQL generated and executed
-→ Results displayed with context
+→ Query suggestions displayed with context
 ```
 
 ### Key Benefits
