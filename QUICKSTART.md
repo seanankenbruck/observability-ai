@@ -434,19 +434,27 @@ curl -X POST http://localhost:8080/api/v1/query \
   "promql": "rate(container_cpu_usage_seconds_total{service=\"auth\"}[5m])",
   "explanation": "This query calculates the CPU usage rate for the auth service over a 5-minute window.",
   "results": {
-    "status": "success",
-    "data": {
-      "resultType": "vector",
-      "result": [
-        {
-          "metric": {
-            "service": "auth",
-            "pod": "auth-7d9f4c5b-xk2p9"
-          },
-          "value": [1704121200, "0.45"]
-        }
-      ]
-    }
+    "total_series": 1,
+    "samples": [
+      {
+        "metric": {
+          "service": "auth",
+          "pod": "auth-7d9f4c5b-xk2p9"
+        },
+        "value": 0.45,
+        "timestamp": "2025-01-15T10:00:00Z"
+      }
+    ],
+    "summary": "Current value: 0.45",
+    "truncated": false
+  },
+  "result_metadata": {
+    "visualization_type": "stat",
+    "recommendation": "Display as single value stat panel",
+    "next_steps": [
+      "Create an alert if value exceeds threshold",
+      "View historical trends in Grafana"
+    ]
   },
   "cached": false,
   "execution_time_ms": 523
@@ -454,6 +462,56 @@ curl -X POST http://localhost:8080/api/v1/query \
 ```
 
 **✅ Success Indicator:** You receive a response with `promql`, `explanation`, and `results` fields!
+
+### Understanding Enhanced Query Results
+
+The query response now includes enhanced result processing with intelligent metadata:
+
+**Result Structure:**
+- `results.total_series`: Total number of metric series found
+- `results.samples`: Processed metric data (limited by MAX_RESULT_SAMPLES)
+- `results.summary`: Human-readable summary of the data
+- `results.truncated`: Indicates if results were limited
+- `results.statistics`: For time series queries (min, max, avg, current, trend)
+
+**Metadata for Visualization:**
+- `result_metadata.visualization_type`: Recommended visualization ("time_series", "stat", "table")
+- `result_metadata.recommendation`: Explanation of why this visualization is suggested
+- `result_metadata.next_steps`: Actionable suggestions based on the query results
+
+**Example with Time Series Data:**
+```bash
+curl -X POST http://localhost:8080/api/v1/query \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"query": "Show me CPU usage trends for the last hour"}'
+```
+
+**Response with statistics:**
+```json
+{
+  "promql": "rate(cpu_usage[1h])",
+  "results": {
+    "total_series": 1,
+    "statistics": {
+      "min": 0.15,
+      "max": 0.85,
+      "avg": 0.45,
+      "current": 0.52,
+      "trend": "increasing"
+    },
+    "summary": "1 series over time: Min=0.15, Max=0.85, Avg=0.45, Current=0.52 (increasing)"
+  },
+  "result_metadata": {
+    "visualization_type": "time_series",
+    "recommendation": "Display as time series graph showing the trend",
+    "next_steps": [
+      "View full time series in Grafana",
+      "Consider setting an upper threshold alert"
+    ]
+  }
+}
+```
 
 ### Try More Queries
 
@@ -868,6 +926,19 @@ Now that you have Observability AI running, explore these resources:
   RATE_LIMIT_REQUESTS=100
   RATE_LIMIT_WINDOW=1h
   ```
+
+- **Customize query results:**
+  ```bash
+  # Edit .env to configure query result limits
+  MAX_RESULT_SAMPLES=10     # Max samples for instant queries
+  MAX_RESULT_TIMEPOINTS=50  # Max time points for range queries
+  QUERY_TIMEOUT=30s         # Timeout for PromQL execution
+  ```
+
+  **What this does:**
+  - `MAX_RESULT_SAMPLES`: Controls how many metric series are returned (prevents overwhelming responses)
+  - `MAX_RESULT_TIMEPOINTS`: Limits time series data points (improves performance for large time ranges)
+  - `QUERY_TIMEOUT`: Sets maximum query execution time (prevents runaway queries)
 
 ### Explore Features
 

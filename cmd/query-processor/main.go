@@ -116,8 +116,12 @@ func main() {
 		return m.Alloc, m.Sys
 	}))
 
-	// Create query processor
-	qp := processor.NewQueryProcessor(llmClient, semanticMapper, rdb)
+	// Create query processor with configuration
+	processorConfig := processor.ProcessorConfig{
+		MaxResultSamples:    getEnvInt("MAX_RESULT_SAMPLES", 10),
+		MaxResultTimePoints: getEnvInt("MAX_RESULT_TIMEPOINTS", 50),
+	}
+	qp := processor.NewQueryProcessor(llmClient, semanticMapper, rdb, mimirClient, processorConfig)
 	qp.SetHealthChecker(healthChecker)
 
 	// Setup Gin router with authentication
