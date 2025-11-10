@@ -105,12 +105,13 @@ function App() {
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
       // Add error message
+      const errorDetails = (error as any)?.errorDetails;
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         type: 'assistant',
         content: 'Sorry, I encountered an error processing your query.',
         timestamp: new Date(),
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: errorDetails || (error instanceof Error ? error.message : 'Unknown error'),
       };
       setMessages(prev => [...prev, errorMessage]);
     } finally {

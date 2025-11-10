@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChatMessage } from '../types/api';
+import { ChatMessage, ErrorDetails } from '../types/api';
 import { formatProcessingTime, formatConfidence, getConfidenceColor, getCostColor } from '../utils/api';
 
 interface MessageBubbleProps {
@@ -29,7 +29,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
         <div className="bg-gray-800 border border-gray-600 rounded-lg p-3 max-w-md text-center">
           <p className="text-sm text-gray-300">{message.content}</p>
           {message.error && (
-            <p className="text-xs text-red-400 mt-1">Error: {message.error}</p>
+            <p className="text-xs text-red-400 mt-1">
+              Error: {typeof message.error === 'string' ? message.error : (message.error as ErrorDetails).message}
+            </p>
           )}
         </div>
       </div>
@@ -120,8 +122,51 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
 
         {/* Error Display */}
         {message.error && (
-          <div className="mt-3 p-2 bg-red-900/30 border border-red-700 rounded text-red-300 text-sm">
-            <span className="font-medium">Error:</span> {message.error}
+          <div className="mt-3 p-3 bg-red-900/30 border border-red-700 rounded">
+            {typeof message.error === 'string' ? (
+              // Simple string error
+              <div className="text-red-300 text-sm">
+                <span className="font-medium">Error:</span> {message.error}
+              </div>
+            ) : (
+              // Structured error with details
+              <div className="space-y-2">
+                <div className="flex items-start space-x-2">
+                  <span className="text-red-400 text-lg flex-shrink-0">⚠️</span>
+                  <div className="flex-1">
+                    <div className="font-semibold text-red-300 text-sm mb-1">
+                      {(message.error as ErrorDetails).code?.replace(/_/g, ' ') || 'Error'}
+                    </div>
+                    <div className="text-red-200 text-sm">
+                      {(message.error as ErrorDetails).message}
+                    </div>
+                  </div>
+                </div>
+
+                {(message.error as ErrorDetails).details && (
+                  <div className="pl-7 text-red-300/80 text-xs">
+                    {(message.error as ErrorDetails).details}
+                  </div>
+                )}
+
+                {(message.error as ErrorDetails).suggestion && (
+                  <div className="pl-7 mt-2 p-2 bg-yellow-900/20 border border-yellow-700/50 rounded">
+                    <div className="flex items-start space-x-2">
+                      <span className="text-yellow-400 flex-shrink-0">💡</span>
+                      <div className="text-yellow-200 text-xs">
+                        <span className="font-medium">Suggestion:</span> {(message.error as ErrorDetails).suggestion}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {(message.error as ErrorDetails).metadata?.retryable && (
+                  <div className="pl-7 text-xs text-gray-400 italic">
+                    This operation can be retried
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 

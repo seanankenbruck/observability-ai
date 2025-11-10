@@ -49,13 +49,25 @@ export interface QueryRequest {
     estimated_cost?: number;
     cache_hit?: boolean;
     timestamp: Date;
-    error?: string;
+    error?: string | ErrorDetails;
   }
 
   export interface ApiError {
-    error: string;
+    error: string | ErrorDetails;
     message?: string;
     details?: any;
+  }
+
+  export interface ErrorDetails {
+    code: string;
+    message: string;
+    details?: string;
+    suggestion?: string;
+    metadata?: {
+      retryable?: boolean;
+      llm_message?: string;
+      [key: string]: any;
+    };
   }
 
   // WebSocket message types
