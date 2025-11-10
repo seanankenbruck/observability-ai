@@ -148,11 +148,27 @@ func (qp *QueryProcessor) ProcessQuery(ctx context.Context, req *QueryRequest) (
 		return nil, processingErr
 	}
 
+	// Log the prompt for debugging
+	qp.logger.Debug(ctx, "Generated prompt for LLM", map[string]interface{}{
+		"prompt": prompt,
+	})
+
 	// Generate PromQL using LLM
 	llmResponse, err := qp.llmClient.GenerateQuery(ctx, prompt)
 	if err != nil {
 		errorType = "query_generation"
 		processingErr = errors.NewQueryGenerationError(err)
+		return nil, processingErr
+	}
+
+	// Check if LLM returned an error message (no suitable metrics found)
+	if strings.HasPrefix(strings.TrimSpace(llmResponse.PromQL), "ERROR:") {
+		errorType = "no_suitable_metrics"
+		processingErr = errors.Wrap(nil, errors.ErrCodeQueryGeneration, strings.TrimPrefix(strings.TrimSpace(llmResponse.PromQL), "ERROR:")).
+			WithDetails("The requested query cannot be fulfilled with the currently discovered metrics").
+			WithSuggestion("Check available services and metrics, or wait for service discovery to complete").
+			WithMetadata("retryable", true).
+			WithMetadata("llm_message", llmResponse.PromQL)
 		return nil, processingErr
 	}
 
@@ -194,42 +210,164 @@ func (qp *QueryProcessor) ProcessQuery(ctx context.Context, req *QueryRequest) (
 func (qp *QueryProcessor) buildPrompt(ctx context.Context, req *QueryRequest, intent *QueryIntent, similarQueries []semantic.SimilarQuery) (string, error) {
 	var promptBuilder strings.Builder
 
-	promptBuilder.WriteString("You are a PromQL expert. Convert the natural language query to PromQL.\n\n")
-	promptBuilder.WriteString("IMPORTANT: Return ONLY the PromQL query. Do not include explanations, descriptions, or code blocks.\n\n")
+	promptBuilder.WriteString("You are a PromQL expert assistant. Your task is to convert natural language queries into accurate PromQL queries.\n\n")
 
-	// Add context about available services
-	if intent.Service != "" {
-		if service, err := qp.semanticMapper.GetServiceByName(ctx, intent.Service, "default"); err == nil {
-			promptBuilder.WriteString(fmt.Sprintf("Service Context:\n- Name: %s\n- Namespace: %s\n- Available metrics: %v\n\n",
-				service.Name, service.Namespace, service.MetricNames))
+	promptBuilder.WriteString("=== CRITICAL RULES ===\n")
+	promptBuilder.WriteString("1. ONLY use metrics from the Available Metrics Catalog below - no exceptions\n")
+	promptBuilder.WriteString("2. If the requested metric type doesn't exist, respond with: ERROR: No suitable metrics found. [explanation]\n")
+	promptBuilder.WriteString("3. Return ONLY the PromQL query or ERROR message - no markdown, explanations, or code blocks\n")
+	promptBuilder.WriteString("4. Apply correct PromQL functions based on metric types:\n")
+	promptBuilder.WriteString("   - Counters (e.g., *_total, *_count): Use rate() or increase()\n")
+	promptBuilder.WriteString("   - Gauges (e.g., *_active_*, *_current_*, *_size_): Use directly or with aggregations\n")
+	promptBuilder.WriteString("   - Histograms (*_bucket): Use histogram_quantile() for percentiles\n")
+	promptBuilder.WriteString("   - Summaries (*_sum, *_count): Calculate averages using sum/count\n\n")
+
+	// Add ALL discovered services and their metrics
+	services, err := qp.semanticMapper.GetServices(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to get services for prompt: %w", err)
+	}
+
+	// Log the number of services discovered
+	fmt.Printf("DEBUG: Building prompt with %d discovered services\n", len(services))
+
+	if len(services) > 0 {
+		promptBuilder.WriteString("=== AVAILABLE METRICS CATALOG ===\n")
+		promptBuilder.WriteString("These are the ONLY metrics you can use:\n\n")
+
+		// Track if we need to filter metrics for large services
+		const maxMetricsPerService = 50 // Limit to avoid token limits
+
+		for _, service := range services {
+			promptBuilder.WriteString(fmt.Sprintf("Service: %s (namespace: %s)\n", service.Name, service.Namespace))
+			if len(service.MetricNames) > 0 {
+				// Categorize metrics by type for better context
+				counters, gauges, histograms, others := categorizeMetrics(service.MetricNames)
+
+				// Filter to relevant metrics if service is targeted or limit if too many
+				var filteredCounters, filteredGauges, filteredHistograms, filteredOthers []string
+
+				// If a specific service is requested, prioritize showing all its metrics
+				if intent.Service != "" && strings.EqualFold(service.Name, intent.Service) {
+					filteredCounters = counters
+					filteredGauges = gauges
+					filteredHistograms = histograms
+					filteredOthers = others
+				} else if len(service.MetricNames) > maxMetricsPerService {
+					// For large services, show a sample with metric count
+					filteredCounters = limitSlice(counters, 10)
+					filteredGauges = limitSlice(gauges, 10)
+					filteredHistograms = limitSlice(histograms, 5)
+					filteredOthers = limitSlice(others, 5)
+				} else {
+					filteredCounters = counters
+					filteredGauges = gauges
+					filteredHistograms = histograms
+					filteredOthers = others
+				}
+
+				totalMetrics := len(service.MetricNames)
+				shownMetrics := len(filteredCounters) + len(filteredGauges) + len(filteredHistograms) + len(filteredOthers)
+
+				if len(filteredCounters) > 0 {
+					promptBuilder.WriteString("  Counters (use rate/increase):\n")
+					for _, metric := range filteredCounters {
+						promptBuilder.WriteString(fmt.Sprintf("    - %s\n", metric))
+					}
+				}
+				if len(filteredGauges) > 0 {
+					promptBuilder.WriteString("  Gauges (use directly or aggregate):\n")
+					for _, metric := range filteredGauges {
+						promptBuilder.WriteString(fmt.Sprintf("    - %s\n", metric))
+					}
+				}
+				if len(filteredHistograms) > 0 {
+					promptBuilder.WriteString("  Histograms (use histogram_quantile):\n")
+					for _, metric := range filteredHistograms {
+						promptBuilder.WriteString(fmt.Sprintf("    - %s\n", metric))
+					}
+				}
+				if len(filteredOthers) > 0 {
+					promptBuilder.WriteString("  Other metrics:\n")
+					for _, metric := range filteredOthers {
+						promptBuilder.WriteString(fmt.Sprintf("    - %s\n", metric))
+					}
+				}
+
+				// Note if metrics were filtered
+				if shownMetrics < totalMetrics {
+					promptBuilder.WriteString(fmt.Sprintf("  ... and %d more metrics (search for specific patterns)\n", totalMetrics-shownMetrics))
+				}
+			} else {
+				promptBuilder.WriteString("  (No metrics discovered yet)\n")
+			}
+			promptBuilder.WriteString("\n")
 		}
+		promptBuilder.WriteString("=== END CATALOG ===\n\n")
+	} else {
+		promptBuilder.WriteString("WARNING: No services have been discovered yet. Return ERROR.\n\n")
 	}
 
 	// Add similar queries as examples
 	if len(similarQueries) > 0 {
-		promptBuilder.WriteString("Examples:\n")
+		promptBuilder.WriteString("=== EXAMPLES FROM PAST QUERIES ===\n")
 		for _, sq := range similarQueries[:min(3, len(similarQueries))] {
-			promptBuilder.WriteString(fmt.Sprintf("Query: %s\nPromQL: %s\n\n", sq.Query, sq.PromQL))
+			promptBuilder.WriteString(fmt.Sprintf("Q: %s\nA: %s\n\n", sq.Query, sq.PromQL))
 		}
 	}
 
-	// Add the main query
-	promptBuilder.WriteString(fmt.Sprintf("Query: %s\n\n", req.Query))
+	// Add the main query with context
+	promptBuilder.WriteString("=== YOUR TASK ===\n")
+	promptBuilder.WriteString(fmt.Sprintf("User Query: \"%s\"\n", req.Query))
 
 	// Add extracted intent for context
-	if intent.Type != "" {
-		promptBuilder.WriteString(fmt.Sprintf("Intent: %s\n", intent.Type))
-	}
-	if intent.Service != "" {
-		promptBuilder.WriteString(fmt.Sprintf("Target Service: %s\n", intent.Service))
-	}
-	if intent.TimeRange != "" {
-		promptBuilder.WriteString(fmt.Sprintf("Time Range: %s\n", intent.TimeRange))
+	if intent.Type != "" || intent.Service != "" || intent.TimeRange != "" {
+		promptBuilder.WriteString("\nDetected Context:\n")
+		if intent.Type != "" {
+			promptBuilder.WriteString(fmt.Sprintf("  - Intent: %s\n", intent.Type))
+		}
+		if intent.Service != "" {
+			promptBuilder.WriteString(fmt.Sprintf("  - Target Service: %s\n", intent.Service))
+		}
+		if intent.TimeRange != "" {
+			promptBuilder.WriteString(fmt.Sprintf("  - Time Range: %s\n", intent.TimeRange))
+		}
 	}
 
-	promptBuilder.WriteString("\nReturn only the PromQL query:")
+	promptBuilder.WriteString("\nYour Response (PromQL query or ERROR):")
 
 	return promptBuilder.String(), nil
+}
+
+// categorizeMetrics categorizes metrics by type based on naming conventions
+func categorizeMetrics(metrics []string) (counters, gauges, histograms, others []string) {
+	for _, metric := range metrics {
+		metricLower := strings.ToLower(metric)
+		switch {
+		case strings.HasSuffix(metricLower, "_total") || strings.HasSuffix(metricLower, "_count"):
+			counters = append(counters, metric)
+		case strings.HasSuffix(metricLower, "_bucket"):
+			histograms = append(histograms, metric)
+		case strings.Contains(metricLower, "_active_") ||
+		     strings.Contains(metricLower, "_current_") ||
+		     strings.Contains(metricLower, "_size") ||
+		     strings.Contains(metricLower, "_gauge") ||
+		     strings.HasSuffix(metricLower, "_bytes") ||
+		     strings.HasSuffix(metricLower, "_ratio"):
+			gauges = append(gauges, metric)
+		default:
+			others = append(others, metric)
+		}
+	}
+	return
+}
+
+// limitSlice returns the first n elements of a slice, or the whole slice if shorter
+func limitSlice(slice []string, n int) []string {
+	if len(slice) <= n {
+		return slice
+	}
+	return slice[:n]
 }
 
 // estimateQueryCost provides a rough estimate of query execution cost

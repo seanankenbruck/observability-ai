@@ -430,30 +430,28 @@ curl -X POST http://localhost:8080/api/v1/query \
 **Expected response:**
 ```json
 {
-  "query": "What is the CPU usage for the auth service?",
-  "promql": "rate(container_cpu_usage_seconds_total{service=\"auth\"}[5m])",
-  "explanation": "This query calculates the CPU usage rate for the auth service over a 5-minute window.",
-  "results": {
-    "status": "success",
-    "data": {
-      "resultType": "vector",
-      "result": [
-        {
-          "metric": {
-            "service": "auth",
-            "pod": "auth-7d9f4c5b-xk2p9"
-          },
-          "value": [1704121200, "0.45"]
-        }
-      ]
+    "promql": "sum(rate(container_cpu_usage_seconds_total{container_name=\"auth\"}[1m]))",
+    "explanation": "PromQL query generated based on the natural language request.",
+    "confidence": 0.9000000000000001,
+    "estimated_cost": 6,
+    "cache_hit": false,
+    "processing_time": 724423304,
+    "metadata": {
+        "intent": {
+            "type": "metrics",
+            "action": "show",
+            "service": "",
+            "metric": "",
+            "time_range": "",
+            "aggregation": "",
+            "filters": {}
+        },
+        "similar_queries": 0
     }
-  },
-  "cached": false,
-  "execution_time_ms": 523
 }
 ```
 
-**✅ Success Indicator:** You receive a response with `promql`, `explanation`, and `results` fields!
+**✅ Success Indicator:** You receive a response with `promql`, `explanation`, and `metadata` fields!
 
 ### Try More Queries
 
@@ -465,23 +463,42 @@ curl http://localhost:8080/api/v1/services \
 
 **Expected response:**
 ```json
-{
-  "services": [
-    {
-      "id": "...",
-      "name": "auth",
-      "namespace": "production",
-      "labels": {"app": "auth", "tier": "backend"}
-    },
-    {
-      "id": "...",
-      "name": "payment",
-      "namespace": "production",
-      "labels": {"app": "payment", "tier": "backend"}
-    }
-  ],
-  "count": 2
-}
+[
+  {
+      "id": "20e487ba-ca5b-4ef1-a041-133ece2b8f7b",
+      "name": "auth-service",
+      "namespace": "default",
+      "labels": {
+          "namespace": "default"
+      },
+      "metric_names": [
+          "scrape_duration_seconds",
+          "scrape_samples_post_metric_relabeling",
+          "scrape_samples_scraped",
+          "scrape_series_added",
+          "up"
+      ],
+      "created_at": "2025-11-10T15:19:22.209113Z",
+      "updated_at": "2025-11-10T18:15:20.224614Z"
+  },
+  {
+      "id": "c61e842b-f006-4296-a4f3-3c7e0b7782ca",
+      "name": "demo-app",
+      "namespace": "default",
+      "labels": {
+          "namespace": "default"
+      },
+      "metric_names": [
+          "scrape_duration_seconds",
+          "scrape_samples_post_metric_relabeling",
+          "scrape_samples_scraped",
+          "scrape_series_added",
+          "up"
+      ],
+      "created_at": "2025-11-10T15:19:22.451013Z",
+      "updated_at": "2025-11-10T18:15:20.230626Z"
+  }
+] 
 ```
 
 ```bash
