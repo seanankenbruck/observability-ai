@@ -205,7 +205,7 @@ Cached queries are much faster (typically <100ms vs 500ms+).
   "query": "CPU for auth",
   "promql": "rate(container_cpu_usage_seconds_total{service=\"auth\"}[5m])",
   "explanation": "This calculates...",
-  "results": { ... }
+  "metadata": { ... }
 }
 ```
 
