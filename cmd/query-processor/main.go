@@ -116,6 +116,18 @@ func main() {
 		return m.Alloc, m.Sys
 	}))
 
+	// Register LLM health check
+	healthChecker.Register("llm_service", observability.LLMHealthCheck(func(ctx context.Context) error {
+		// Simple health check - try to generate a minimal embedding
+		_, err := llmClient.GetEmbedding(ctx, "health check")
+		return err
+	}))
+
+	// Register Mimir health check
+	healthChecker.Register("mimir", observability.MimirHealthCheck(func(ctx context.Context) error {
+		return mimirClient.TestConnection(ctx)
+	}))
+
 	// Create query processor
 	qp := processor.NewQueryProcessor(llmClient, semanticMapper, rdb)
 	qp.SetHealthChecker(healthChecker)

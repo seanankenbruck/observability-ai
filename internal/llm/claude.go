@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/seanankenbruck/observability-ai/internal/observability"
 )
 
 const (
@@ -17,6 +19,11 @@ const (
 	ClaudeVersion    = "2023-06-01"
 	MaxTokens        = 1000
 	Temperature      = 0.1 // Low temperature for consistent PromQL generation
+
+	// Claude 3.5 Sonnet pricing (as of January 2025)
+	// Prices are per million tokens
+	InputTokenPrice  = 0.000003  // $3 per million input tokens
+	OutputTokenPrice = 0.000015  // $15 per million output tokens
 )
 
 // ClaudeClient implements the Client interface using Anthropic's Claude API
@@ -92,6 +99,8 @@ func NewClaudeClient(apiKey, model string) (*ClaudeClient, error) {
 
 // GenerateQuery sends a prompt to Claude and returns a PromQL query
 func (c *ClaudeClient) GenerateQuery(ctx context.Context, prompt string) (*Response, error) {
+	start := time.Now()
+
 	// Prepare the request
 	request := ClaudeRequest{
 		Model:       c.model,
@@ -105,8 +114,23 @@ func (c *ClaudeClient) GenerateQuery(ctx context.Context, prompt string) (*Respo
 		},
 	}
 
-	// Send request to Claude
-	response, err := c.sendClaudeRequest(ctx, request)
+	// Send request to Claude with retry logic
+	response, err := c.sendClaudeRequestWithRetry(ctx, request)
+	duration := time.Since(start)
+
+	// Calculate tokens and cost from response
+	tokens := 0
+	cost := 0.0
+	if response != nil {
+		tokens = response.Usage.InputTokens + response.Usage.OutputTokens
+		inputCost := float64(response.Usage.InputTokens) * InputTokenPrice
+		outputCost := float64(response.Usage.OutputTokens) * OutputTokenPrice
+		cost = inputCost + outputCost
+	}
+
+	// Record metrics (always, even on error)
+	observability.RecordLLMMetrics("generate_query", duration, tokens, cost, err)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request to Claude: %w", err)
 	}
@@ -127,9 +151,17 @@ func (c *ClaudeClient) GenerateQuery(ctx context.Context, prompt string) (*Respo
 // GetEmbedding implements simple text-based similarity using basic string features
 // Since Claude doesn't provide embeddings, we'll create a simple representation
 func (c *ClaudeClient) GetEmbedding(ctx context.Context, text string) ([]float32, error) {
+	start := time.Now()
+
 	// This is a simple text-to-vector conversion for basic similarity matching
 	// In production, you'd want to use a proper embedding model
-	return c.createSimpleEmbedding(text), nil
+	embedding := c.createSimpleEmbedding(text)
+
+	duration := time.Since(start)
+	// Embeddings are free (local computation), but still track the operation
+	observability.RecordLLMMetrics("get_embedding", duration, 0, 0.0, nil)
+
+	return embedding, nil
 }
 
 // sendClaudeRequest handles the HTTP communication with Claude API
