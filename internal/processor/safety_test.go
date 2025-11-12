@@ -17,6 +17,7 @@ func TestNewSafetyChecker(t *testing.T) {
 	assert.Equal(t, 7*24*time.Hour, sc.MaxQueryRange)
 	assert.Equal(t, 10000, sc.MaxCardinality)
 	assert.Equal(t, 30, sc.TimeoutSeconds)
+	assert.Equal(t, 500, sc.MaxQueryLength)
 	assert.NotEmpty(t, sc.ForbiddenMetrics)
 	assert.Contains(t, sc.ForbiddenMetrics, ".*_secret.*")
 	assert.Contains(t, sc.ForbiddenMetrics, ".*_password.*")
@@ -478,5 +479,265 @@ func BenchmarkEstimateCardinality(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = sc.EstimateCardinality(query)
+	}
+}
+
+// TestQueryLengthValidation tests the new query length limit
+func TestQueryLengthValidation(t *testing.T) {
+	sc := NewSafetyChecker()
+
+	// Create a long query that exceeds the limit
+	longQuery := "rate(http_requests_total{service=\"api\""
+	for i := 0; i < 500; i++ {
+		longQuery += ",label" + string(rune(i)) + "=\"value\""
+	}
+	longQuery += "}[5m])"
+
+	err := sc.ValidateQuery(longQuery)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "exceeds maximum length")
+
+	// Test a normal length query
+	normalQuery := `rate(http_requests_total{service="api"}[5m])`
+	err = sc.ValidateQuery(normalQuery)
+	assert.NoError(t, err)
+}
+
+// TestCaseInsensitiveForbiddenPatterns tests case-insensitive pattern matching
+func TestCaseInsensitiveForbiddenPatterns(t *testing.T) {
+	sc := NewSafetyChecker()
+
+	tests := []struct {
+		name    string
+		query   string
+		wantErr bool
+	}{
+		{
+			name:    "lowercase secret",
+			query:   `my_secret_value`,
+			wantErr: true,
+		},
+		{
+			name:    "uppercase SECRET",
+			query:   `my_SECRET_value`,
+			wantErr: true,
+		},
+		{
+			name:    "mixed case SeCrEt",
+			query:   `my_SeCrEt_value`,
+			wantErr: true,
+		},
+		{
+			name:    "lowercase password",
+			query:   `user_password_hash`,
+			wantErr: true,
+		},
+		{
+			name:    "uppercase PASSWORD",
+			query:   `user_PASSWORD_hash`,
+			wantErr: true,
+		},
+		{
+			name:    "mixed case PaSsWoRd",
+			query:   `user_PaSsWoRd_hash`,
+			wantErr: true,
+		},
+		{
+			name:    "lowercase token",
+			query:   `auth_token_count`,
+			wantErr: true,
+		},
+		{
+			name:    "uppercase TOKEN",
+			query:   `auth_TOKEN_count`,
+			wantErr: true,
+		},
+		{
+			name:    "safe query",
+			query:   `http_requests_total`,
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := sc.ValidateQuery(tt.query)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "forbidden")
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestSanitizeForLogging tests log injection prevention
+func TestSanitizeForLogging(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "normal query",
+			input:    `rate(http_requests_total[5m])`,
+			expected: `rate(http_requests_total[5m])`,
+		},
+		{
+			name:     "query with newline",
+			input:    "rate(http_requests_total[5m])\nmalicious_log_entry",
+			expected: `rate(http_requests_total[5m])\nmalicious_log_entry`,
+		},
+		{
+			name:     "query with carriage return",
+			input:    "rate(http_requests_total[5m])\rmalicious_entry",
+			expected: `rate(http_requests_total[5m])\rmalicious_entry`,
+		},
+		{
+			name:     "query with tab",
+			input:    "rate(http_requests_total[5m])\tmalicious",
+			expected: `rate(http_requests_total[5m])\tmalicious`,
+		},
+		{
+			name:     "very long query",
+			input:    string(make([]byte, 300)),
+			expected: string(make([]byte, 200)) + "...",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := sanitizeForLogging(tt.input)
+			if tt.name == "very long query" {
+				assert.Len(t, result, 203) // 200 + "..."
+			} else {
+				assert.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}
+
+// TestTimeRangeFormatValidation tests the new time range format validation
+func TestTimeRangeFormatValidation(t *testing.T) {
+	tests := []struct {
+		name      string
+		timeRange string
+		wantErr   bool
+	}{
+		{
+			name:      "valid - minutes",
+			timeRange: "5m",
+			wantErr:   false,
+		},
+		{
+			name:      "valid - hours",
+			timeRange: "24h",
+			wantErr:   false,
+		},
+		{
+			name:      "valid - days",
+			timeRange: "7d",
+			wantErr:   false,
+		},
+		{
+			name:      "valid - weeks",
+			timeRange: "2w",
+			wantErr:   true, // exceeds 7d limit
+		},
+		{
+			name:      "invalid - no unit",
+			timeRange: "5",
+			wantErr:   true,
+		},
+		{
+			name:      "invalid - no number",
+			timeRange: "m",
+			wantErr:   true,
+		},
+		{
+			name:      "invalid - wrong unit",
+			timeRange: "5x",
+			wantErr:   true,
+		},
+		{
+			name:      "invalid - spaces",
+			timeRange: "5 m",
+			wantErr:   true,
+		},
+		{
+			name:      "invalid - negative",
+			timeRange: "-5m",
+			wantErr:   true,
+		},
+	}
+
+	sc := NewSafetyChecker()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := sc.ValidateTimeRange(tt.timeRange)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestCustomForbiddenPatterns tests the new ForbiddenPatterns field
+func TestCustomForbiddenPatterns(t *testing.T) {
+	sc := &SafetyChecker{
+		MaxQueryRange:  7 * 24 * time.Hour,
+		MaxCardinality: 10000,
+		TimeoutSeconds: 30,
+		MaxQueryLength: 500,
+		ForbiddenMetrics: []string{
+			".*_secret.*",
+		},
+		ForbiddenPatterns: []string{
+			"admin_",
+			"internal_",
+			"debug_",
+		},
+	}
+
+	tests := []struct {
+		name    string
+		query   string
+		wantErr bool
+	}{
+		{
+			name:    "forbidden - admin prefix",
+			query:   `admin_operations_total`,
+			wantErr: true,
+		},
+		{
+			name:    "forbidden - internal prefix",
+			query:   `internal_metrics_count`,
+			wantErr: true,
+		},
+		{
+			name:    "forbidden - debug prefix",
+			query:   `debug_info_gauge`,
+			wantErr: true,
+		},
+		{
+			name:    "safe - normal metric",
+			query:   `http_requests_total`,
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := sc.ValidateQuery(tt.query)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "forbidden")
+			} else {
+				assert.NoError(t, err)
+			}
+		})
 	}
 }
