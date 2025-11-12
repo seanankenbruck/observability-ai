@@ -15,6 +15,8 @@ type SafetyChecker struct {
 	MaxCardinality   int
 	TimeoutSeconds   int
 	ForbiddenMetrics []string
+	MaxQueryLength   int // Maximum query length in characters
+	ForbiddenPatterns []string // Additional forbidden patterns (compiled as case-insensitive)
 }
 
 // NewSafetyChecker creates a new safety checker with default settings
@@ -23,21 +25,48 @@ func NewSafetyChecker() *SafetyChecker {
 		MaxQueryRange:  7 * 24 * time.Hour, // 7 days
 		MaxCardinality: 10000,
 		TimeoutSeconds: 30,
+		MaxQueryLength: 500, // Maximum 500 characters
 		ForbiddenMetrics: []string{
 			".*_secret.*",
 			".*_password.*",
 			".*_token.*",
 			".*_key.*",
 		},
+		ForbiddenPatterns: []string{
+			// Add any additional forbidden patterns here
+		},
 	}
 }
 
 // ValidateQuery checks if a PromQL query is safe to execute
 func (sc *SafetyChecker) ValidateQuery(promql string) error {
-	// Check for forbidden metrics
+	// Check query length limit
+	if sc.MaxQueryLength > 0 && len(promql) > sc.MaxQueryLength {
+		return errors.New(errors.ErrCodeInvalidInput, "Query exceeds maximum length").
+			WithDetails(fmt.Sprintf("Query length: %d characters, maximum allowed: %d", len(promql), sc.MaxQueryLength)).
+			WithSuggestion("Please simplify your query or break it into smaller queries.")
+	}
+
+	// Sanitize query for log injection prevention
+	sanitizedQuery := sanitizeForLogging(promql)
+	_ = sanitizedQuery // Used for logging purposes
+
+	// Check for forbidden metrics (case-insensitive)
+	promqlLower := strings.ToLower(promql)
 	for _, forbidden := range sc.ForbiddenMetrics {
-		if matched, _ := regexp.MatchString(forbidden, promql); matched {
+		forbiddenLower := strings.ToLower(forbidden)
+		if matched, _ := regexp.MatchString(forbiddenLower, promqlLower); matched {
 			return errors.NewForbiddenMetricError(forbidden)
+		}
+	}
+
+	// Check for additional forbidden patterns (case-insensitive)
+	for _, pattern := range sc.ForbiddenPatterns {
+		patternLower := strings.ToLower(pattern)
+		if matched, _ := regexp.MatchString(patternLower, promqlLower); matched {
+			return errors.New(errors.ErrCodeForbiddenMetric, "Query contains forbidden pattern").
+				WithDetails(fmt.Sprintf("Forbidden pattern: %s", pattern)).
+				WithSuggestion("Modify your query to avoid using this pattern.")
 		}
 	}
 
@@ -82,6 +111,13 @@ func (sc *SafetyChecker) ValidateQuery(promql string) error {
 
 // ValidateTimeRange checks if a time range is within safe limits
 func (sc *SafetyChecker) ValidateTimeRange(timeRange string) error {
+	// Validate time range format first
+	if !isValidTimeRangeFormat(timeRange) {
+		return errors.New(errors.ErrCodeInvalidInput, "Invalid time range format").
+			WithDetails(fmt.Sprintf("Time range: %s", timeRange)).
+			WithSuggestion("Use valid time range formats like: 5m, 1h, 24h, 7d, 1w")
+	}
+
 	// Parse common time range formats
 	patterns := map[string]time.Duration{
 		`(\d+)m`: time.Minute,
@@ -105,6 +141,28 @@ func (sc *SafetyChecker) ValidateTimeRange(timeRange string) error {
 	}
 
 	return nil
+}
+
+// isValidTimeRangeFormat validates the format of a time range string
+func isValidTimeRangeFormat(timeRange string) bool {
+	// Valid formats: 5m, 1h, 24h, 7d, 1w, etc.
+	validFormat := regexp.MustCompile(`^\d+[mhdw]$`)
+	return validFormat.MatchString(timeRange)
+}
+
+// sanitizeForLogging removes or escapes characters that could be used for log injection
+func sanitizeForLogging(input string) string {
+	// Replace newlines and carriage returns to prevent log injection
+	sanitized := strings.ReplaceAll(input, "\n", "\\n")
+	sanitized = strings.ReplaceAll(sanitized, "\r", "\\r")
+	sanitized = strings.ReplaceAll(sanitized, "\t", "\\t")
+
+	// Limit length for logging
+	if len(sanitized) > 200 {
+		sanitized = sanitized[:200] + "..."
+	}
+
+	return sanitized
 }
 
 // EstimateCardinality provides a rough estimate of query result cardinality
