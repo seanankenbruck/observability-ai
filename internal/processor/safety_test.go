@@ -363,14 +363,16 @@ func TestEdgeCases(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "uppercase SECRET - pattern is case-sensitive",
-			query:   `my_SECRET_value`,
-			wantErr: false, // Pattern .*_secret.* is lowercase only
+			name:        "uppercase SECRET - should be blocked (case-insensitive)",
+			query:       `my_SECRET_value`,
+			wantErr:     true,
+			errContains: "forbidden",
 		},
 		{
-			name:    "mixed case Password - pattern is case-sensitive",
-			query:   `user_Password_hash`,
-			wantErr: false, // Pattern .*_password.* is lowercase only
+			name:        "mixed case Password - should be blocked (case-insensitive)",
+			query:       `user_Password_hash`,
+			wantErr:     true,
+			errContains: "forbidden",
 		},
 		{
 			name:    "similar but safe - tokenize (not token)",

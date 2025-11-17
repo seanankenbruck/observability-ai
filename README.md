@@ -1,5 +1,8 @@
 # Observability AI
 
+[![CodeQL](https://github.com/seanankenbruck/observability-ai/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/seanankenbruck/observability-ai/actions/workflows/codeql.yml)
+[![codecov](https://codecov.io/gh/seanankenbruck/observability-ai/graph/badge.svg?token=30DNBFU5QA)](https://codecov.io/gh/seanankenbruck/observability-ai)
+
 **Stop writing PromQL. Start asking questions.**
 
 A natural language interface for querying Prometheus/Mimir metrics. Ask questions in plain English and get accurate PromQL queries executed against your observability data—instantly.

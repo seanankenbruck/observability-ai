@@ -16,7 +16,7 @@ type SafetyChecker struct {
 	TimeoutSeconds   int
 	ForbiddenMetrics []string
 	MaxQueryLength   int // Maximum query length in characters
-	ForbiddenPatterns []string // Additional forbidden patterns (compiled as case-insensitive)
+	ForbiddenPatterns []string // Additional forbidden patterns (case-insensitive)
 }
 
 // NewSafetyChecker creates a new safety checker with default settings
