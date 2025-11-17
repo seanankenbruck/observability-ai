@@ -3,15 +3,13 @@ package main
 import (
 	"context"
 	"log"
-	"os"
 	"runtime"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
 	"github.com/seanankenbruck/observability-ai/internal/auth"
+	"github.com/seanankenbruck/observability-ai/internal/config"
 	"github.com/seanankenbruck/observability-ai/internal/llm"
 	"github.com/seanankenbruck/observability-ai/internal/mimir"
 	"github.com/seanankenbruck/observability-ai/internal/observability"
@@ -20,26 +18,43 @@ import (
 )
 
 func main() {
+	ctx := context.Background()
+
+	// Load configuration using the new config package
+	loader := config.NewDefaultLoader()
+	cfg := loader.MustLoad(ctx)
+
+	// Validate configuration
+	if err := cfg.ValidateWithContext(); err != nil {
+		log.Fatalf("Configuration validation failed: %v", err)
+	}
+
+	log.Printf("Configuration loaded successfully from provider chain")
+	if cfg.IsProduction() {
+		log.Printf("Running in PRODUCTION mode - production validation enabled")
+	}
+
 	// Initialize Redis client
 	rdb := redis.NewClient(&redis.Options{
-		Addr:     getEnv("REDIS_ADDR", "localhost:6379"),
-		Password: getEnv("REDIS_PASSWORD", ""),
-		DB:       0,
+		Addr:     cfg.Redis.Addr,
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
 	})
 
 	// Initialize LLM client
-	llmClient, err := llm.NewClaudeClient(getEnv("CLAUDE_API_KEY", ""), getEnv("CLAUDE_MODEL", ""))
+	llmClient, err := llm.NewClaudeClient(cfg.Claude.APIKey, cfg.Claude.Model)
 	if err != nil {
 		log.Fatal("Failed to initialize LLM client:", err)
 	}
 
 	// Initialize semantic mapper
 	semanticMapper, err := semantic.NewPostgresMapper(semantic.PostgresConfig{
-		Host:     getEnv("DB_HOST", "localhost"),
-		Port:     getEnv("DB_PORT", "5432"),
-		Database: getEnv("DB_NAME", "observability_ai"),
-		Username: getEnv("DB_USER", "obs_ai"),
-		Password: getEnv("DB_PASSWORD", "changeme"),
+		Host:     cfg.Database.Host,
+		Port:     cfg.Database.Port,
+		Database: cfg.Database.Database,
+		Username: cfg.Database.Username,
+		Password: cfg.Database.Password,
+		SSLMode:  cfg.Database.SSLMode,
 	})
 	if err != nil {
 		log.Fatal("Failed to initialize semantic mapper:", err)
@@ -47,24 +62,24 @@ func main() {
 
 	// Initialize Mimir client
 	mimirClient := mimir.NewClient(
-		getEnv("MIMIR_ENDPOINT", "http://localhost:9009"),
+		cfg.Mimir.Endpoint,
 		mimir.AuthConfig{
-			Type:        getEnv("MIMIR_AUTH_TYPE", "none"),
-			Username:    getEnv("MIMIR_USERNAME", ""),
-			Password:    getEnv("MIMIR_PASSWORD", ""),
-			BearerToken: getEnv("MIMIR_BEARER_TOKEN", ""),
-			TenantID:    getEnv("MIMIR_TENANT_ID", "demo"),
+			Type:        cfg.Mimir.AuthType,
+			Username:    cfg.Mimir.Username,
+			Password:    cfg.Mimir.Password,
+			BearerToken: cfg.Mimir.BearerToken,
+			TenantID:    cfg.Mimir.TenantID,
 		},
-		30*time.Second,
+		cfg.Mimir.Timeout,
 	)
 
 	// Initialize discovery service
 	discoveryConfig := mimir.DiscoveryConfig{
-		Enabled:           getEnvBool("DISCOVERY_ENABLED", true),
-		Interval:          getEnvDuration("DISCOVERY_INTERVAL", 5*time.Minute),
-		Namespaces:        getEnvSlice("DISCOVERY_NAMESPACES", []string{}),
-		ServiceLabelNames: getEnvSlice("SERVICE_LABEL_NAMES", []string{"service", "job", "app"}),
-		ExcludeMetrics:    getEnvSlice("EXCLUDE_METRICS", []string{"go_.*", "process_.*"}),
+		Enabled:           cfg.Discovery.Enabled,
+		Interval:          cfg.Discovery.Interval,
+		Namespaces:        cfg.Discovery.Namespaces,
+		ServiceLabelNames: cfg.Discovery.ServiceLabelNames,
+		ExcludeMetrics:    cfg.Discovery.ExcludeMetrics,
 	}
 
 	discoveryService := mimir.NewDiscoveryService(mimirClient, discoveryConfig, semanticMapper)
@@ -81,11 +96,11 @@ func main() {
 
 	// Initialize auth manager
 	authManager := auth.NewAuthManager(auth.AuthConfig{
-		JWTSecret:      getEnv("JWT_SECRET", ""),
-		JWTExpiry:      getEnvDuration("JWT_EXPIRY", 24*time.Hour),
-		SessionExpiry:  getEnvDuration("SESSION_EXPIRY", 7*24*time.Hour),
-		RateLimit:      getEnvInt("RATE_LIMIT", 100),
-		AllowAnonymous: getEnvBool("ALLOW_ANONYMOUS", false),
+		JWTSecret:      cfg.Auth.JWTSecret,
+		JWTExpiry:      cfg.Auth.JWTExpiry,
+		SessionExpiry:  cfg.Auth.SessionExpiry,
+		RateLimit:      cfg.Auth.RateLimit,
+		AllowAnonymous: cfg.Auth.AllowAnonymous,
 	})
 
 	// Start auth cleanup routine
@@ -155,57 +170,13 @@ func main() {
 	authHandlers := auth.NewAuthHandlers(authManager)
 	authHandlers.SetupRoutes(router.Group("/api/v1"))
 
-	port := getEnv("PORT", "8080")
 	logger.Info(context.Background(), "Query processor starting", map[string]interface{}{
-		"port":    port,
+		"port":    cfg.Server.Port,
 		"version": "1.0.0",
+		"mode":    cfg.Server.GinMode,
 	})
-	if err := router.Run(":" + port); err != nil {
+	if err := router.Run(":" + cfg.Server.Port); err != nil {
 		logger.Error(context.Background(), "Failed to start server", err, nil)
 		log.Fatal("Failed to start server:", err)
 	}
-}
-
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
-
-func getEnvBool(key string, defaultValue bool) bool {
-	if value := os.Getenv(key); value != "" {
-		b, err := strconv.ParseBool(value)
-		if err == nil {
-			return b
-		}
-	}
-	return defaultValue
-}
-
-func getEnvInt(key string, defaultValue int) int {
-	if value := os.Getenv(key); value != "" {
-		i, err := strconv.Atoi(value)
-		if err == nil {
-			return i
-		}
-	}
-	return defaultValue
-}
-
-func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
-	if value := os.Getenv(key); value != "" {
-		d, err := time.ParseDuration(value)
-		if err == nil {
-			return d
-		}
-	}
-	return defaultValue
-}
-
-func getEnvSlice(key string, defaultValue []string) []string {
-	if value := os.Getenv(key); value != "" {
-		return strings.Split(value, ",")
-	}
-	return defaultValue
 }
