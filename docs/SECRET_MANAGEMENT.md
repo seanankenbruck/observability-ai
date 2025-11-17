@@ -453,7 +453,6 @@ kubectl exec <pod> -- ls -la /var/secrets
 ## Additional Resources
 
 - [Configuration Package Documentation](../internal/config/README.md)
-- [Production Readiness Guide](./PRODUCTION_READINESS.md)
 - [External Secrets Operator](https://external-secrets.io/)
 - [HashiCorp Vault](https://www.vaultproject.io/)
 - [AWS Secrets Manager](https://aws.amazon.com/secrets-manager/)

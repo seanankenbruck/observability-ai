@@ -451,4 +451,3 @@ The `/var/secrets` directory doesn't exist or isn't accessible. Options:
 
 For issues or questions about the configuration system:
 - GitHub Issues: https://github.com/seanankenbruck/observability-ai/issues
-- See also: [Production Readiness Guide](../../docs/PRODUCTION_READINESS.md)
