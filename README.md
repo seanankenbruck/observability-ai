@@ -1,7 +1,7 @@
 # Observability AI
 
 [![CodeQL](https://github.com/seanankenbruck/observability-ai/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/seanankenbruck/observability-ai/actions/workflows/codeql.yml)
-[![codecov](https://codecov.io/gh/seanankenbruck/observability-ai/graph/badge.svg?token=30DNBFU5QA)](https://codecov.io/gh/seanankenbruck/observability-ai)
+[![codecov](https://codecov.io/gh/seanankenbruck/observability-ai/graph/badge.svg?token=32W78AWQHL)](https://codecov.io/gh/seanankenbruck/observability-ai)
 
 **Stop writing PromQL. Start asking questions.**
 
