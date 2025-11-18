@@ -1,0 +1,98 @@
+# Development environment overrides
+# Usage: helm install observability-ai ./helm/observability-ai -f ./helm/observability-ai/values-dev.yaml
+
+# Reduce replica counts for local development
+queryProcessor:
+  replicaCount: 1
+
+  # Lower resource requirements for local development
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  # Disable autoscaling in development
+  autoscaling:
+    enabled: false
+
+web:
+  replicaCount: 1
+
+  resources:
+    limits:
+      cpu: 250m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+  autoscaling:
+    enabled: false
+
+# Application configuration for development
+config:
+  # Enable debug mode
+  server:
+    ginMode: "debug"
+
+  # Allow anonymous access for easier testing
+  auth:
+    allowAnonymous: true
+    rateLimit: 1000  # Higher rate limit for development
+
+  # More lenient query limits
+  query:
+    maxResultSamples: 20
+    maxResultTimepoints: 100
+    timeout: "60s"
+    cacheTTL: "1m"  # Shorter cache for faster iteration
+    maxQueryLength: 1000
+    maxNestingDepth: 5
+    maxTimeRangeDays: 30
+    # Keep safety checks enabled even in dev
+    enableSafetyChecks: true
+
+# Use built-in PostgreSQL subchart for development
+postgresql:
+  enabled: true
+  auth:
+    password: "devpassword"
+  primary:
+    persistence:
+      # Use smaller volume for development
+      size: 1Gi
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+# Use built-in Redis subchart for development
+redis:
+  enabled: true
+  auth:
+    password: "devpassword"
+  master:
+    persistence:
+      # Use smaller volume for development
+      size: 1Gi
+    resources:
+      limits:
+        cpu: 250m
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
+
+# Development secrets (inline values for convenience)
+# NOTE: These are NOT secure and should only be used in local development
+secrets:
+  claudeApiKey: "sk-ant-dev-key-replace-me"
+  jwtSecret: "dev-jwt-secret-not-secure-change-me-in-production"
+  dbPassword: "devpassword"
+  redisPassword: "devpassword"
