@@ -1,0 +1,86 @@
+{{- if .Values.migration.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "observability-ai.fullname" . }}-migrate
+  labels:
+    {{- include "observability-ai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migration
+  annotations:
+    # Run before install and upgrade
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: {{ .Values.migration.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migration.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "observability-ai.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migration
+      annotations:
+        {{- with .Values.migration.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "observability-ai.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.migration.podSecurityContext | nindent 8 }}
+      restartPolicy: Never
+      containers:
+      - name: migrate
+        securityContext:
+          {{- toYaml .Values.migration.securityContext | nindent 10 }}
+        image: "{{ .Values.migration.image.repository }}:{{ .Values.migration.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.migration.image.pullPolicy }}
+        command:
+          {{- toYaml .Values.migration.command | nindent 10 }}
+        env:
+        # Database connection
+        - name: DB_HOST
+          value: {{ include "observability-ai.database.host" . | quote }}
+        - name: DB_PORT
+          value: {{ include "observability-ai.database.port" . | quote }}
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "observability-ai.fullname" . }}-config
+              key: DB_NAME
+        - name: DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "observability-ai.fullname" . }}-config
+              key: DB_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "observability-ai.secretName" . }}
+              key: db-password
+        - name: DB_SSLMODE
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "observability-ai.fullname" . }}-config
+              key: DB_SSLMODE
+        {{- with .Values.migration.extraEnv }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.migration.resources | nindent 10 }}
+      {{- with .Values.migration.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.migration.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.migration.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
