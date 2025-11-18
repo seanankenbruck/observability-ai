@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "observability-ai.fullname" . }}
+  labels:
+    {{- include "observability-ai.labels" . | nindent 4 }}
+data:
+  # Server Configuration
+  PORT: {{ .Values.queryProcessor.service.port | quote }}
+  GIN_MODE: {{ .Values.config.ginMode | quote }}
+
+  # Claude Configuration
+  CLAUDE_MODEL: {{ .Values.config.claude.model | quote }}
+
+  # Mimir Configuration
+  MIMIR_ENDPOINT: {{ .Values.mimir.endpoint | quote }}
+  MIMIR_AUTH_TYPE: {{ .Values.mimir.auth.type | quote }}
+  MIMIR_TENANT_ID: {{ .Values.mimir.tenantId | quote }}
+
+  # Discovery Configuration
+  DISCOVERY_ENABLED: {{ .Values.config.discovery.enabled | quote }}
+  DISCOVERY_INTERVAL: {{ .Values.config.discovery.interval | quote }}
+  DISCOVERY_NAMESPACES: {{ .Values.config.discovery.namespaces | join "," | quote }}
+  SERVICE_LABEL_NAMES: {{ .Values.config.discovery.serviceLabelNames | join "," | quote }}
+  EXCLUDE_METRICS: {{ .Values.config.discovery.excludeMetrics | join "," | quote }}
+
+  # Authentication Configuration
+  JWT_EXPIRY: {{ .Values.config.auth.jwtExpiry | quote }}
+  SESSION_EXPIRY: {{ .Values.config.auth.sessionExpiry | quote }}
+  RATE_LIMIT: {{ .Values.config.auth.rateLimit | quote }}
+  ALLOW_ANONYMOUS: {{ .Values.config.auth.allowAnonymous | quote }}
+
+  # Query Configuration
+  MAX_RESULT_SAMPLES: {{ .Values.config.query.maxResultSamples | quote }}
+  MAX_RESULT_TIMEPOINTS: {{ .Values.config.query.maxResultTimepoints | quote }}
+  QUERY_TIMEOUT: {{ .Values.config.query.timeout | quote }}
+  CACHE_TTL: {{ .Values.config.query.cacheTTL | quote }}
+  MAX_QUERY_LENGTH: {{ .Values.config.query.maxQueryLength | quote }}
+  MAX_NESTING_DEPTH: {{ .Values.config.query.maxNestingDepth | quote }}
+  MAX_TIME_RANGE_DAYS: {{ .Values.config.query.maxTimeRangeDays | quote }}
+  ENABLE_SAFETY_CHECKS: {{ .Values.config.query.enableSafetyChecks | quote }}
+
+  # Database Configuration (non-secret)
+  DB_HOST: {{ include "observability-ai.database.host" . | quote }}
+  DB_PORT: {{ include "observability-ai.database.port" . | quote }}
+  DB_NAME: {{ include "observability-ai.database.name" . | quote }}
+  DB_USER: {{ include "observability-ai.database.username" . | quote }}
+  DB_SSLMODE: {{ .Values.config.database.sslMode | quote }}
+
+  # Redis Configuration (non-secret)
+  REDIS_ADDR: {{ printf "%s:%v" (include "observability-ai.redis.host" .) (include "observability-ai.redis.port" .) | quote }}
+  REDIS_DB: {{ .Values.config.redis.db | quote }}
