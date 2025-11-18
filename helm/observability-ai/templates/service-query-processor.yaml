@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "observability-ai.fullname" . }}-query-processor
+  labels:
+    {{- include "observability-ai.queryProcessor.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.queryProcessor.service.type }}
+  ports:
+    - port: {{ .Values.queryProcessor.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+      {{- if and (eq .Values.queryProcessor.service.type "NodePort") .Values.queryProcessor.service.nodePort }}
+      nodePort: {{ .Values.queryProcessor.service.nodePort }}
+      {{- end }}
+  selector:
+    {{- include "observability-ai.queryProcessor.selectorLabels" . | nindent 4 }}
+  {{- with .Values.queryProcessor.service.sessionAffinity }}
+  sessionAffinity: {{ . }}
+  {{- end }}
+  {{- with .Values.queryProcessor.service.sessionAffinityConfig }}
+  sessionAffinityConfig:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
