@@ -253,8 +253,17 @@ config:
 
   # Service discovery
   discovery:
-    cacheTTL: "5m"
-    refreshInterval: "1m"
+    enabled: true
+    interval: "5m"
+    namespaces: []
+    serviceLabelNames:
+      - service
+      - job
+      - app
+    excludeMetrics:
+      - "go_.*"
+      - "process_.*"
+      - "promhttp_.*"
 
   # Authentication configuration
   auth:

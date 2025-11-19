@@ -6,16 +6,17 @@ metadata:
     {{- include "observability-ai.labels" . | nindent 4 }}
 data:
   # Server Configuration
-  PORT: {{ .Values.queryProcessor.service.port | quote }}
-  GIN_MODE: {{ .Values.config.ginMode | quote }}
+  PORT: {{ .Values.config.server.port | quote }}
+  GIN_MODE: {{ .Values.config.server.ginMode | quote }}
 
   # Claude Configuration
   CLAUDE_MODEL: {{ .Values.config.claude.model | quote }}
 
   # Mimir Configuration
-  MIMIR_ENDPOINT: {{ .Values.mimir.endpoint | quote }}
-  MIMIR_AUTH_TYPE: {{ .Values.mimir.auth.type | quote }}
-  MIMIR_TENANT_ID: {{ .Values.mimir.tenantId | quote }}
+  MIMIR_ENDPOINT: {{ .Values.config.mimir.endpoint | quote }}
+  MIMIR_AUTH_TYPE: {{ .Values.config.mimir.authType | quote }}
+  MIMIR_TENANT_ID: {{ .Values.config.mimir.tenantId | quote }}
+  MIMIR_TIMEOUT: {{ .Values.config.mimir.timeout | quote }}
 
   # Discovery Configuration
   DISCOVERY_ENABLED: {{ .Values.config.discovery.enabled | quote }}
