@@ -39,22 +39,119 @@ type MetricMetadata struct {
 	Unit string `json:"unit"`
 }
 
+// BackendType represents the type of Prometheus-compatible backend
+type BackendType string
+
+const (
+	BackendTypeAuto       BackendType = "auto"
+	BackendTypeMimir      BackendType = "mimir"
+	BackendTypePrometheus BackendType = "prometheus"
+)
+
 // Client is an HTTP client for communicating with Mimir/Prometheus API
 type Client struct {
-	endpoint   string
-	auth       AuthConfig
-	httpClient *http.Client
+	endpoint    string
+	auth        AuthConfig
+	httpClient  *http.Client
+	backendType BackendType
+	apiPrefix   string // "/prometheus/api/v1" for Mimir, "/api/v1" for Prometheus
 }
 
-// NewClient creates a new Mimir client
+// NewClient creates a new Mimir client with default backend type (auto-detect)
 func NewClient(endpoint string, auth AuthConfig, timeout time.Duration) *Client {
-	return &Client{
+	return NewClientWithBackend(endpoint, auth, timeout, BackendTypeAuto)
+}
+
+// NewClientWithBackend creates a new client with a specific backend type
+func NewClientWithBackend(endpoint string, auth AuthConfig, timeout time.Duration, backendType BackendType) *Client {
+	client := &Client{
 		endpoint: strings.TrimSuffix(endpoint, "/"),
 		auth:     auth,
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
+		backendType: backendType,
 	}
+
+	// Set the API prefix based on backend type
+	client.apiPrefix = client.determineAPIPrefix()
+
+	return client
+}
+
+// determineAPIPrefix determines the correct API prefix based on backend type
+func (c *Client) determineAPIPrefix() string {
+	switch c.backendType {
+	case BackendTypeMimir:
+		return "/prometheus/api/v1"
+	case BackendTypePrometheus:
+		return "/api/v1"
+	case BackendTypeAuto:
+		// Try to auto-detect by checking which endpoint responds
+		if c.detectBackendType() == BackendTypeMimir {
+			return "/prometheus/api/v1"
+		}
+		return "/api/v1"
+	default:
+		// Default to Prometheus-style paths
+		return "/api/v1"
+	}
+}
+
+// detectBackendType attempts to detect the backend type by probing endpoints
+func (c *Client) detectBackendType() BackendType {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Try Prometheus-style endpoint first (more common)
+	if c.testEndpoint(ctx, "/api/v1/query") {
+		return BackendTypePrometheus
+	}
+
+	// Try Mimir-style endpoint
+	if c.testEndpoint(ctx, "/prometheus/api/v1/query") {
+		return BackendTypeMimir
+	}
+
+	// Default to Prometheus if detection fails
+	return BackendTypePrometheus
+}
+
+// testEndpoint tests if an endpoint is accessible
+func (c *Client) testEndpoint(ctx context.Context, path string) bool {
+	// Use a simple query to test the endpoint
+	params := url.Values{}
+	params.Set("query", "up")
+	params.Set("time", fmt.Sprintf("%d", time.Now().Unix()))
+
+	reqURL := fmt.Sprintf("%s%s?%s", c.endpoint, path, params.Encode())
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+	if err != nil {
+		return false
+	}
+
+	// Add authentication
+	switch c.auth.Type {
+	case "basic":
+		req.SetBasicAuth(c.auth.Username, c.auth.Password)
+	case "bearer":
+		req.Header.Set("Authorization", "Bearer "+c.auth.BearerToken)
+	}
+
+	// Add Mimir tenant ID header if specified
+	if c.auth.TenantID != "" {
+		req.Header.Set("X-Scope-OrgID", c.auth.TenantID)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	// Consider 2xx and 4xx responses as "accessible" (4xx means auth issue, but endpoint exists)
+	// Only 404, 5xx, or connection errors mean the endpoint doesn't exist
+	return resp.StatusCode != http.StatusNotFound && resp.StatusCode < 500
 }
 
 // doRequest executes an HTTP request with authentication
@@ -104,7 +201,7 @@ func (c *Client) Query(ctx context.Context, query string, timestamp time.Time) (
 		params.Set("time", fmt.Sprintf("%d", timestamp.Unix()))
 	}
 
-	resp, err := c.doRequest(ctx, "GET", "/prometheus/api/v1/query", params)
+	resp, err := c.doRequest(ctx, "GET", c.apiPrefix+"/query", params)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +236,7 @@ func (c *Client) QueryRange(ctx context.Context, query string, start, end time.T
 	params.Set("end", fmt.Sprintf("%d", end.Unix()))
 	params.Set("step", fmt.Sprintf("%d", int(step.Seconds())))
 
-	resp, err := c.doRequest(ctx, "GET", "/prometheus/api/v1/query_range", params)
+	resp, err := c.doRequest(ctx, "GET", c.apiPrefix+"/query_range", params)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +265,7 @@ func (c *Client) QueryRange(ctx context.Context, query string, start, end time.T
 
 // GetMetricNames retrieves all metric names from Mimir
 func (c *Client) GetMetricNames(ctx context.Context) ([]string, error) {
-	resp, err := c.doRequest(ctx, "GET", "/prometheus/api/v1/label/__name__/values", nil)
+	resp, err := c.doRequest(ctx, "GET", c.apiPrefix+"/label/__name__/values", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +302,7 @@ func (c *Client) GetLabelValues(ctx context.Context, labelName string, metricMat
 		params.Set("match[]", metricMatchers[0])
 	}
 
-	path := fmt.Sprintf("/prometheus/api/v1/label/%s/values", url.PathEscape(labelName))
+	path := fmt.Sprintf("%s/label/%s/values", c.apiPrefix, url.PathEscape(labelName))
 	resp, err := c.doRequest(ctx, "GET", path, params)
 	if err != nil {
 		return nil, err
@@ -243,7 +340,7 @@ func (c *Client) GetMetricMetadata(ctx context.Context, metricName string) (*Met
 		params.Set("metric", metricName)
 	}
 
-	resp, err := c.doRequest(ctx, "GET", "/prometheus/api/v1/metadata", params)
+	resp, err := c.doRequest(ctx, "GET", c.apiPrefix+"/metadata", params)
 	if err != nil {
 		// Fallback to inferring type from metric name
 		return &MetricMetadata{
