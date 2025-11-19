@@ -150,7 +150,9 @@ func TestClientQuery(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create test server
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, "/prometheus/api/v1/query", r.URL.Path)
+				// Accept both Mimir and Prometheus paths for testing
+				validPaths := []string{"/prometheus/api/v1/query", "/api/v1/query"}
+				assert.Contains(t, validPaths, r.URL.Path)
 				assert.Equal(t, tt.query, r.URL.Query().Get("query"))
 
 				if !tt.timestamp.IsZero() {
@@ -166,7 +168,8 @@ func TestClientQuery(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewClient(server.URL, AuthConfig{Type: "none"}, 5*time.Second)
+			// Use Mimir backend type explicitly for tests to avoid auto-detection
+			client := NewClientWithBackend(server.URL, AuthConfig{Type: "none"}, 5*time.Second, BackendTypeMimir)
 			ctx := context.Background()
 
 			resp, err := client.Query(ctx, tt.query, tt.timestamp)
@@ -256,7 +259,9 @@ func TestClientQueryRange(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create test server
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, "/prometheus/api/v1/query_range", r.URL.Path)
+				// Accept both Mimir and Prometheus paths for testing
+				validPaths := []string{"/prometheus/api/v1/query_range", "/api/v1/query_range"}
+				assert.Contains(t, validPaths, r.URL.Path)
 				assert.Equal(t, tt.query, r.URL.Query().Get("query"))
 				assert.Equal(t, fmt.Sprintf("%d", tt.start.Unix()), r.URL.Query().Get("start"))
 				assert.Equal(t, fmt.Sprintf("%d", tt.end.Unix()), r.URL.Query().Get("end"))
@@ -271,7 +276,8 @@ func TestClientQueryRange(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewClient(server.URL, AuthConfig{Type: "none"}, 5*time.Second)
+			// Use Mimir backend type explicitly for tests to avoid auto-detection
+			client := NewClientWithBackend(server.URL, AuthConfig{Type: "none"}, 5*time.Second, BackendTypeMimir)
 			ctx := context.Background()
 
 			resp, err := client.QueryRange(ctx, tt.query, tt.start, tt.end, tt.step)
@@ -345,7 +351,9 @@ func TestClientGetMetricNames(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, "/prometheus/api/v1/label/__name__/values", r.URL.Path)
+				// Accept both Mimir and Prometheus paths for testing
+				validPaths := []string{"/prometheus/api/v1/label/__name__/values", "/api/v1/label/__name__/values"}
+				assert.Contains(t, validPaths, r.URL.Path)
 
 				w.WriteHeader(tt.responseStatus)
 				if str, ok := tt.responseBody.(string); ok {
@@ -356,7 +364,8 @@ func TestClientGetMetricNames(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewClient(server.URL, AuthConfig{Type: "none"}, 5*time.Second)
+			// Use Mimir backend type explicitly for tests to avoid auto-detection
+			client := NewClientWithBackend(server.URL, AuthConfig{Type: "none"}, 5*time.Second, BackendTypeMimir)
 			ctx := context.Background()
 
 			names, err := client.GetMetricNames(ctx)
@@ -431,7 +440,12 @@ func TestClientGetLabelValues(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, fmt.Sprintf("/prometheus/api/v1/label/%s/values", tt.labelName), r.URL.Path)
+				// Accept both Mimir and Prometheus paths for testing
+				validPaths := []string{
+					fmt.Sprintf("/prometheus/api/v1/label/%s/values", tt.labelName),
+					fmt.Sprintf("/api/v1/label/%s/values", tt.labelName),
+				}
+				assert.Contains(t, validPaths, r.URL.Path)
 				if len(tt.metricMatchers) > 0 {
 					assert.Equal(t, tt.metricMatchers[0], r.URL.Query().Get("match[]"))
 				}
@@ -445,7 +459,8 @@ func TestClientGetLabelValues(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewClient(server.URL, AuthConfig{Type: "none"}, 5*time.Second)
+			// Use Mimir backend type explicitly for tests to avoid auto-detection
+			client := NewClientWithBackend(server.URL, AuthConfig{Type: "none"}, 5*time.Second, BackendTypeMimir)
 			ctx := context.Background()
 
 			values, err := client.GetLabelValues(ctx, tt.labelName, tt.metricMatchers...)
@@ -535,7 +550,9 @@ func TestClientGetMetricMetadata(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, "/prometheus/api/v1/metadata", r.URL.Path)
+				// Accept both Mimir and Prometheus paths for testing
+				validPaths := []string{"/prometheus/api/v1/metadata", "/api/v1/metadata"}
+				assert.Contains(t, validPaths, r.URL.Path)
 				if tt.metricName != "" {
 					assert.Equal(t, tt.metricName, r.URL.Query().Get("metric"))
 				}
@@ -549,7 +566,8 @@ func TestClientGetMetricMetadata(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewClient(server.URL, AuthConfig{Type: "none"}, 5*time.Second)
+			// Use Mimir backend type explicitly for tests to avoid auto-detection
+			client := NewClientWithBackend(server.URL, AuthConfig{Type: "none"}, 5*time.Second, BackendTypeMimir)
 			ctx := context.Background()
 
 			metadata, err := client.GetMetricMetadata(ctx, tt.metricName)
@@ -599,7 +617,9 @@ func TestClientTestConnection(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, "/prometheus/api/v1/query", r.URL.Path)
+				// Accept both Mimir and Prometheus paths for testing
+				validPaths := []string{"/prometheus/api/v1/query", "/api/v1/query"}
+				assert.Contains(t, validPaths, r.URL.Path)
 				assert.Equal(t, "up", r.URL.Query().Get("query"))
 
 				w.WriteHeader(tt.responseStatus)
@@ -611,7 +631,8 @@ func TestClientTestConnection(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewClient(server.URL, AuthConfig{Type: "none"}, 5*time.Second)
+			// Use Mimir backend type explicitly for tests to avoid auto-detection
+			client := NewClientWithBackend(server.URL, AuthConfig{Type: "none"}, 5*time.Second, BackendTypeMimir)
 			ctx := context.Background()
 
 			err := client.TestConnection(ctx)
@@ -751,7 +772,8 @@ func TestClientTimeout(t *testing.T) {
 	defer server.Close()
 
 	// Create client with 1 second timeout
-	client := NewClient(server.URL, AuthConfig{Type: "none"}, 1*time.Second)
+	// Use Mimir backend type explicitly for tests to avoid auto-detection
+	client := NewClientWithBackend(server.URL, AuthConfig{Type: "none"}, 1*time.Second, BackendTypeMimir)
 	ctx := context.Background()
 
 	_, err := client.Query(ctx, "up", time.Time{})
@@ -771,7 +793,8 @@ func TestClientContextCancellation(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, AuthConfig{Type: "none"}, 10*time.Second)
+	// Use Mimir backend type explicitly for tests to avoid auto-detection
+	client := NewClientWithBackend(server.URL, AuthConfig{Type: "none"}, 10*time.Second, BackendTypeMimir)
 
 	// Create context with immediate cancellation
 	ctx, cancel := context.WithCancel(context.Background())

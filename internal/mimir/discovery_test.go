@@ -170,7 +170,8 @@ func TestNewDiscoveryService(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := NewClient("http://localhost:9009", AuthConfig{Type: "none"}, 5*time.Second)
+			// Use Mimir backend type explicitly for tests to avoid auto-detection
+			client := NewClientWithBackend("http://localhost:9009", AuthConfig{Type: "none"}, 5*time.Second, BackendTypeMimir)
 			mapper := NewMockMapper()
 
 			ds := NewDiscoveryService(client, tt.config, mapper)
@@ -237,7 +238,8 @@ func TestFilterMetrics(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := NewClient("http://localhost:9009", AuthConfig{Type: "none"}, 5*time.Second)
+			// Use Mimir backend type explicitly for tests to avoid auto-detection
+			client := NewClientWithBackend("http://localhost:9009", AuthConfig{Type: "none"}, 5*time.Second, BackendTypeMimir)
 			mapper := NewMockMapper()
 
 			config := DiscoveryConfig{
@@ -288,7 +290,8 @@ func TestExtractServiceFromMetricName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.metricName, func(t *testing.T) {
-			client := NewClient("http://localhost:9009", AuthConfig{Type: "none"}, 5*time.Second)
+			// Use Mimir backend type explicitly for tests to avoid auto-detection
+			client := NewClientWithBackend("http://localhost:9009", AuthConfig{Type: "none"}, 5*time.Second, BackendTypeMimir)
 			mapper := NewMockMapper()
 			ds := NewDiscoveryService(client, DiscoveryConfig{Enabled: true}, mapper)
 
@@ -317,7 +320,8 @@ func TestIsCommonMetricWord(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.word, func(t *testing.T) {
-			client := NewClient("http://localhost:9009", AuthConfig{Type: "none"}, 5*time.Second)
+			// Use Mimir backend type explicitly for tests to avoid auto-detection
+			client := NewClientWithBackend("http://localhost:9009", AuthConfig{Type: "none"}, 5*time.Second, BackendTypeMimir)
 			mapper := NewMockMapper()
 			ds := NewDiscoveryService(client, DiscoveryConfig{Enabled: true}, mapper)
 
@@ -435,7 +439,8 @@ func TestDiscoverServicesWithMockedMimir(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewClient(server.URL, AuthConfig{Type: "none"}, 5*time.Second)
+			// Use Mimir backend type explicitly for tests to avoid auto-detection
+			client := NewClientWithBackend(server.URL, AuthConfig{Type: "none"}, 5*time.Second, BackendTypeMimir)
 			mapper := NewMockMapper()
 			ds := NewDiscoveryService(client, DiscoveryConfig{Enabled: true}, mapper)
 
@@ -557,7 +562,8 @@ func TestUpdateDatabase(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := NewClient("http://localhost:9009", AuthConfig{Type: "none"}, 5*time.Second)
+			// Use Mimir backend type explicitly for tests to avoid auto-detection
+			client := NewClientWithBackend("http://localhost:9009", AuthConfig{Type: "none"}, 5*time.Second, BackendTypeMimir)
 			mapper := NewMockMapper()
 
 			// Setup existing services
@@ -627,7 +633,8 @@ func TestRunDiscovery(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, AuthConfig{Type: "none"}, 5*time.Second)
+	// Use Mimir backend type explicitly for tests to avoid auto-detection
+	client := NewClientWithBackend(server.URL, AuthConfig{Type: "none"}, 5*time.Second, BackendTypeMimir)
 	mapper := NewMockMapper()
 
 	config := DiscoveryConfig{
@@ -667,7 +674,8 @@ func TestDiscoveryServiceStartStop(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, AuthConfig{Type: "none"}, 5*time.Second)
+	// Use Mimir backend type explicitly for tests to avoid auto-detection
+	client := NewClientWithBackend(server.URL, AuthConfig{Type: "none"}, 5*time.Second, BackendTypeMimir)
 	mapper := NewMockMapper()
 
 	config := DiscoveryConfig{
@@ -702,7 +710,8 @@ func TestDiscoveryServiceStartStop(t *testing.T) {
 
 // TestDiscoveryServiceDisabled tests that discovery doesn't run when disabled
 func TestDiscoveryServiceDisabled(t *testing.T) {
-	client := NewClient("http://localhost:9009", AuthConfig{Type: "none"}, 5*time.Second)
+	// Use Mimir backend type explicitly for tests to avoid auto-detection
+	client := NewClientWithBackend("http://localhost:9009", AuthConfig{Type: "none"}, 5*time.Second, BackendTypeMimir)
 	mapper := NewMockMapper()
 
 	config := DiscoveryConfig{
@@ -726,7 +735,8 @@ func TestDiscoveryServiceConnectionFailure(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, AuthConfig{Type: "none"}, 5*time.Second)
+	// Use Mimir backend type explicitly for tests to avoid auto-detection
+	client := NewClientWithBackend(server.URL, AuthConfig{Type: "none"}, 5*time.Second, BackendTypeMimir)
 	mapper := NewMockMapper()
 
 	config := DiscoveryConfig{
@@ -764,7 +774,8 @@ func TestDiscoverServicesWithNamespaceFilter(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, AuthConfig{Type: "none"}, 5*time.Second)
+	// Use Mimir backend type explicitly for tests to avoid auto-detection
+	client := NewClientWithBackend(server.URL, AuthConfig{Type: "none"}, 5*time.Second, BackendTypeMimir)
 	mapper := NewMockMapper()
 
 	config := DiscoveryConfig{
