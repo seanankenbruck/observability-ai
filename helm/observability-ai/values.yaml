@@ -59,7 +59,7 @@ queryProcessor:
     repository: ghcr.io/seanankenbruck/observability-ai-query-processor
     pullPolicy: IfNotPresent
     # Overrides the image tag whose default is the chart appVersion
-    tag: "v0.2.0"
+    tag: ""
 
   service:
     type: ClusterIP
@@ -125,7 +125,7 @@ web:
   image:
     repository: ghcr.io/seanankenbruck/observability-ai-web
     pullPolicy: IfNotPresent
-    tag: "v0.2.0"
+    tag: ""
 
   service:
     type: ClusterIP
@@ -180,7 +180,7 @@ migration:
   image:
     repository: ghcr.io/seanankenbruck/observability-ai-migrate
     pullPolicy: IfNotPresent
-    tag: "v0.2.0"
+    tag: ""
 
   # Command to run migrations
   command:
