@@ -29,6 +29,17 @@ spec:
       serviceAccountName: {{ include "observability-ai.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.queryProcessor.podSecurityContext | nindent 8 }}
+      initContainers:
+      # Wait for database migrations to complete
+      - name: wait-for-migration
+        image: bitnami/kubectl:latest
+        command:
+          - sh
+          - -c
+          - |
+            echo "Waiting for migration job to complete..."
+            kubectl wait --for=condition=complete --timeout=300s job/{{ include "observability-ai.fullname" . }}-migrate -n {{ .Release.Namespace }}
+            echo "Migration completed successfully!"
       containers:
       - name: query-processor
         securityContext:

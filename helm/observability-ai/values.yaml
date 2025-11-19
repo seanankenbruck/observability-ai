@@ -59,7 +59,7 @@ queryProcessor:
     repository: ghcr.io/seanankenbruck/observability-ai-query-processor
     pullPolicy: IfNotPresent
     # Overrides the image tag whose default is the chart appVersion
-    tag: ""
+    tag: "v0.1.0"
 
   service:
     type: ClusterIP
@@ -125,7 +125,7 @@ web:
   image:
     repository: ghcr.io/seanankenbruck/observability-ai-web
     pullPolicy: IfNotPresent
-    tag: ""
+    tag: "v0.1.0"
 
   service:
     type: ClusterIP
@@ -176,7 +176,7 @@ migration:
   image:
     repository: ghcr.io/seanankenbruck/observability-ai-migrate
     pullPolicy: IfNotPresent
-    tag: ""
+    tag: "v0.1.0"
 
   # Command to run migrations
   command:
@@ -286,12 +286,20 @@ config:
 
 # PostgreSQL subchart configuration
 # See https://github.com/bitnami/charts/tree/main/bitnami/postgresql
+# Note: Bitnami subcharts will use their default images from docker.io/bitnami
+# For ARM64 compatibility, the Bitnami chart will automatically pull the correct arch
 postgresql:
   enabled: true
   auth:
     username: obs_ai
-    password: changeme  # CHANGE IN PRODUCTION
+    # Password will be read from existingSecret if set, otherwise use this value
+    password: changeme  # CHANGE IN PRODUCTION - only used if secrets.existingSecret is not set
     database: observability_ai
+    # Use existing secret for PostgreSQL
+    existingSecret: ""  # Will be overridden by secrets.existingSecret via parent chart
+    secretKeys:
+      adminPasswordKey: db-password
+      userPasswordKey: db-password
   primary:
     persistence:
       enabled: true
@@ -303,11 +311,16 @@ postgresql:
       requests:
         cpu: 250m
         memory: 256Mi
+  # Use PG Vector image instead which is known to work on ARM64
+  image:
+    registry: docker.io
+    repository: pgvector/pgvector
+    tag: "pg16"
 
 # Redis subchart configuration
 # See https://github.com/bitnami/charts/tree/main/bitnami/redis
 redis:
-  enabled: true
+  enabled: false  # Disabled due to image pull issues with Bitnami on ARM64
   auth:
     enabled: true
     password: changeme  # CHANGE IN PRODUCTION
@@ -324,3 +337,9 @@ redis:
         memory: 128Mi
   replica:
     replicaCount: 0  # No replicas by default
+
+# External Redis configuration (when redis.enabled=false)
+externalRedis:
+  host: observability-ai-redis-standalone
+  port: 6379
+  password: changeme
