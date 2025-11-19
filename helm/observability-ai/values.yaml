@@ -1,0 +1,329 @@
+# Default values for observability-ai.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Global settings
+global:
+  # Image registry to use for all images
+  imageRegistry: ""
+
+# Name override for the chart
+nameOverride: ""
+fullnameOverride: ""
+
+# Image pull secrets for private registries
+imagePullSecrets: []
+# - name: myregistrykey
+
+# Service account configuration
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+# Namespace configuration
+namespace:
+  # Create a namespace for the deployment
+  create: false
+  # Name of the namespace (if not set, uses Release.Namespace)
+  name: ""
+
+# Secret configuration
+secrets:
+  # Use an existing secret instead of creating one
+  # If set, the secret must contain: claude-api-key, jwt-secret, db-password, redis-password
+  existingSecret: ""
+
+  # Inline secret values (only used if existingSecret is not set)
+  # WARNING: Only use for development! In production, use existingSecret or external secret management
+  claudeApiKey: ""
+  jwtSecret: ""
+  dbPassword: ""
+  redisPassword: ""
+
+  # Optional: Mimir authentication
+  mimirUsername: ""
+  mimirPassword: ""
+  mimirBearerToken: ""
+
+# Query Processor (Backend API) Configuration
+queryProcessor:
+  enabled: true
+  replicaCount: 2
+
+  image:
+    repository: ghcr.io/seanankenbruck/observability-ai-query-processor
+    pullPolicy: IfNotPresent
+    # Overrides the image tag whose default is the chart appVersion
+    tag: "v0.1.0"
+
+  service:
+    type: ClusterIP
+    port: 8080
+    # nodePort: 30080  # Only used if type is NodePort
+    sessionAffinity: None
+    sessionAffinityConfig: {}
+
+  # Resource limits and requests
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+  # Horizontal Pod Autoscaler
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+    targetMemoryUtilizationPercentage: 80
+
+  # Pod annotations
+  podAnnotations: {}
+
+  # Pod security context
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+
+  # Container security context
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+      - ALL
+    readOnlyRootFilesystem: true
+
+  # Node selector
+  nodeSelector: {}
+
+  # Tolerations
+  tolerations: []
+
+  # Affinity rules
+  affinity: {}
+
+  # Volume mounts
+  volumeMounts: []
+
+  # Volumes
+  volumes: []
+
+# Web UI Configuration
+web:
+  enabled: true
+  replicaCount: 2
+
+  image:
+    repository: ghcr.io/seanankenbruck/observability-ai-web
+    pullPolicy: IfNotPresent
+    tag: "v0.1.0"
+
+  service:
+    type: ClusterIP
+    port: 3000
+    # nodePort: 30000  # Only used if type is NodePort
+    sessionAffinity: None
+    sessionAffinityConfig: {}
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+    targetMemoryUtilizationPercentage: 80
+
+  podAnnotations: {}
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+      - ALL
+    readOnlyRootFilesystem: true
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  volumeMounts: []
+  volumes: []
+
+# Database Migration Job
+migration:
+  enabled: true
+
+  image:
+    repository: ghcr.io/seanankenbruck/observability-ai-migrate
+    pullPolicy: IfNotPresent
+    tag: "v0.1.0"
+
+  # Command to run migrations
+  command:
+    - "./migrate"
+
+  # Job configuration
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  podAnnotations: {}
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+      - ALL
+    readOnlyRootFilesystem: false  # Migrations may need to write temp files
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  # Extra environment variables for migration job
+  extraEnv: []
+
+# Application Configuration (non-secret values)
+config:
+  # Server configuration
+  server:
+    port: "8080"
+    ginMode: "release"
+
+  # Database configuration
+  database:
+    # Use external database (if postgresql.enabled=false)
+    external:
+      host: ""
+      port: "5432"
+    name: "observability_ai"
+    username: "obs_ai"
+    sslMode: "disable"
+
+  # Redis configuration
+  redis:
+    # Use external Redis (if redis.enabled=false)
+    external:
+      host: ""
+      port: "6379"
+    db: "0"
+
+  # Claude AI configuration
+  claude:
+    model: "claude-3-haiku-20240307"
+
+  # Mimir configuration
+  mimir:
+    endpoint: "http://mimir:9009"
+    authType: "none"  # Options: none, basic, bearer
+    tenantId: "demo"
+    timeout: "30s"
+
+  # Service discovery
+  discovery:
+    enabled: true
+    interval: "5m"
+    namespaces: []
+    serviceLabelNames:
+      - service
+      - job
+      - app
+    excludeMetrics:
+      - "go_.*"
+      - "process_.*"
+      - "promhttp_.*"
+
+  # Authentication configuration
+  auth:
+    jwtExpiry: "24h"
+    sessionExpiry: "168h"  # 7 days
+    rateLimit: 100
+    allowAnonymous: false
+
+  # Query processing configuration
+  query:
+    maxResultSamples: 10
+    maxResultTimepoints: 50
+    timeout: "30s"
+    cacheTTL: "5m"
+    maxQueryLength: 500
+    maxNestingDepth: 3
+    maxTimeRangeDays: 7
+    enableSafetyChecks: true
+    forbiddenMetricNames: ".*_secret.*,.*_password.*,.*_token.*"
+
+# PostgreSQL subchart configuration
+# See https://github.com/bitnami/charts/tree/main/bitnami/postgresql
+postgresql:
+  enabled: false  # Disabled - using standalone PostgreSQL with official image instead
+  auth:
+    username: obs_ai
+    password: changeme
+    database: observability_ai
+
+# External PostgreSQL configuration (when postgresql.enabled=false)
+externalDatabase:
+  host: observability-ai-postgresql-standalone
+  port: 5432
+  username: obs_ai
+  database: observability_ai
+  password: changeme  # Only used if not using existingSecret
+
+# Redis subchart configuration
+# See https://github.com/bitnami/charts/tree/main/bitnami/redis
+redis:
+  enabled: false  # Disabled due to image pull issues with Bitnami on ARM64
+  auth:
+    enabled: true
+    password: changeme  # CHANGE IN PRODUCTION
+  master:
+    persistence:
+      enabled: true
+      size: 8Gi
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+  replica:
+    replicaCount: 0  # No replicas by default
+
+# External Redis configuration (when redis.enabled=false)
+externalRedis:
+  host: observability-ai-redis-standalone
+  port: 6379
+  password: changeme

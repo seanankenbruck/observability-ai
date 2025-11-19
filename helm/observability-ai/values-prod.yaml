@@ -1,0 +1,199 @@
+# Production environment overrides
+# Usage: helm install observability-ai ./helm/observability-ai -f ./helm/observability-ai/values-prod.yaml
+
+# Production replica counts for high availability
+queryProcessor:
+  replicaCount: 3
+
+  # Production resource allocation
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+
+  # Enable autoscaling for production
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+  # Production pod disruption budget (optional, requires separate PDB resource)
+  # Ensures at least 2 replicas are always available during rolling updates
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+      - ALL
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 1000
+
+web:
+  replicaCount: 3
+
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 15
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+      - ALL
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 1000
+
+# Application configuration for production
+config:
+  # Production server settings
+  server:
+    ginMode: "release"
+
+  # Database configuration for external PostgreSQL
+  database:
+    external:
+      # Set these to your production database
+      host: ""  # e.g., postgres.example.com
+      port: "5432"
+    sslMode: "require"  # Enable SSL for production
+
+  # Redis configuration for external Redis
+  redis:
+    external:
+      # Set these to your production Redis
+      host: ""  # e.g., redis.example.com
+      port: "6379"
+
+  # Production authentication settings
+  auth:
+    jwtExpiry: "12h"  # Shorter expiry for production
+    sessionExpiry: "72h"  # 3 days
+    rateLimit: 50  # Conservative rate limit
+    allowAnonymous: false  # Never allow anonymous in production
+
+  # Production query limits
+  query:
+    maxResultSamples: 10
+    maxResultTimepoints: 50
+    timeout: "30s"
+    cacheTTL: "10m"  # Longer cache for production
+    maxQueryLength: 500
+    maxNestingDepth: 3
+    maxTimeRangeDays: 7
+    enableSafetyChecks: true
+    forbiddenMetricNames: ".*_secret.*,.*_password.*,.*_token.*,.*_credential.*,.*_key.*"
+
+# Disable built-in PostgreSQL - use external managed database
+postgresql:
+  enabled: false
+
+# Disable built-in Redis - use external managed Redis
+redis:
+  enabled: false
+
+# Production secrets MUST use existingSecret
+# Never use inline secrets in production!
+secrets:
+  # Reference a pre-created Kubernetes secret
+  # This secret should be managed by your secret management system
+  # (e.g., External Secrets Operator, Sealed Secrets, Vault, etc.)
+  existingSecret: "observability-ai-prod-secrets"
+
+  # Do NOT set inline values in production
+  claudeApiKey: ""
+  jwtSecret: ""
+  dbPassword: ""
+  redisPassword: ""
+
+# Migration job configuration for production
+migration:
+  enabled: true
+
+  # Production migration resources
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+  # More generous timeout for production migrations
+  activeDeadlineSeconds: 600  # 10 minutes
+  backoffLimit: 1  # Only retry once in production
+
+# Service account with minimal permissions
+serviceAccount:
+  create: true
+  annotations:
+    # Add IAM role annotations if using cloud provider IAM
+    # eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT_ID:role/observability-ai
+    # azure.workload.identity/client-id: "your-client-id"
+
+# Production pod anti-affinity to spread across nodes
+queryProcessor:
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values:
+              - observability-ai
+            - key: app.kubernetes.io/component
+              operator: In
+              values:
+              - query-processor
+          topologyKey: kubernetes.io/hostname
+
+web:
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values:
+              - observability-ai
+            - key: app.kubernetes.io/component
+              operator: In
+              values:
+              - web
+          topologyKey: kubernetes.io/hostname

@@ -1,0 +1,95 @@
+{{- if not .Values.postgresql.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: observability-ai-postgresql-standalone
+  labels:
+    {{- include "observability-ai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  type: ClusterIP
+  ports:
+  - name: postgresql
+    port: 5432
+    targetPort: postgresql
+  selector:
+    {{- include "observability-ai.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: observability-ai-postgresql-standalone
+  labels:
+    {{- include "observability-ai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  serviceName: observability-ai-postgresql-standalone
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "observability-ai.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: postgresql
+  template:
+    metadata:
+      labels:
+        {{- include "observability-ai.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: postgresql
+    spec:
+      containers:
+      - name: postgresql
+        image: pgvector/pgvector:pg16
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: POSTGRES_USER
+          value: {{ .Values.externalDatabase.username | quote }}
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "observability-ai.secretName" . }}
+              key: db-password
+        - name: POSTGRES_DB
+          value: {{ .Values.externalDatabase.database | quote }}
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        ports:
+        - name: postgresql
+          containerPort: 5432
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+          requests:
+            cpu: 250m
+            memory: 256Mi
+        volumeMounts:
+        - name: postgresql-data
+          mountPath: /var/lib/postgresql/data
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U {{ .Values.externalDatabase.username | quote }} -d {{ .Values.externalDatabase.database | quote }}
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U {{ .Values.externalDatabase.username | quote }} -d {{ .Values.externalDatabase.database | quote }}
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+  volumeClaimTemplates:
+  - metadata:
+      name: postgresql-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 8Gi
+{{- end }}

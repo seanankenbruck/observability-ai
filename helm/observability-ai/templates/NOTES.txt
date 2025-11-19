@@ -1,0 +1,163 @@
+Thank you for installing {{ .Chart.Name }}!
+
+Your release is named {{ .Release.Name }} in namespace {{ .Release.Namespace }}.
+
+To learn more about this release, try:
+
+  $ helm status {{ .Release.Name }}
+  $ helm get all {{ .Release.Name }}
+
+{{- if .Values.migration.enabled }}
+
+Database Migration:
+-------------------
+A database migration job has been created as a pre-install/pre-upgrade hook.
+Check the migration status:
+
+  $ kubectl get job {{ include "observability-ai.fullname" . }}-migrate -n {{ .Release.Namespace }}
+  $ kubectl logs job/{{ include "observability-ai.fullname" . }}-migrate -n {{ .Release.Namespace }}
+
+{{- end }}
+
+Services:
+---------
+{{- if .Values.queryProcessor.enabled }}
+The Query Processor API is available at:
+
+  {{- if eq .Values.queryProcessor.service.type "ClusterIP" }}
+  Internal: http://{{ include "observability-ai.fullname" . }}-query-processor.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.queryProcessor.service.port }}
+
+  To access from outside the cluster, use port-forward:
+  $ kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "observability-ai.fullname" . }}-query-processor {{ .Values.queryProcessor.service.port }}:{{ .Values.queryProcessor.service.port }}
+  {{- else if eq .Values.queryProcessor.service.type "NodePort" }}
+  External: http://<NODE-IP>:{{ .Values.queryProcessor.service.nodePort }}
+
+  Get the node IP:
+  $ kubectl get nodes -o wide
+  {{- else if eq .Values.queryProcessor.service.type "LoadBalancer" }}
+  External: Wait for LoadBalancer IP to be assigned
+  $ kubectl get svc {{ include "observability-ai.fullname" . }}-query-processor -n {{ .Release.Namespace }} --watch
+  {{- end }}
+{{- end }}
+
+{{- if .Values.web.enabled }}
+The Web UI is available at:
+
+  {{- if eq .Values.web.service.type "ClusterIP" }}
+  Internal: http://{{ include "observability-ai.fullname" . }}-web.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.web.service.port }}
+
+  To access from outside the cluster, use port-forward:
+  $ kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "observability-ai.fullname" . }}-web {{ .Values.web.service.port }}:{{ .Values.web.service.port }}
+
+  Then open your browser to: http://localhost:{{ .Values.web.service.port }}
+  {{- else if eq .Values.web.service.type "NodePort" }}
+  External: http://<NODE-IP>:{{ .Values.web.service.nodePort }}
+
+  Get the node IP:
+  $ kubectl get nodes -o wide
+  {{- else if eq .Values.web.service.type "LoadBalancer" }}
+  External: Wait for LoadBalancer IP to be assigned
+  $ kubectl get svc {{ include "observability-ai.fullname" . }}-web -n {{ .Release.Namespace }} --watch
+  {{- end }}
+{{- end }}
+
+Configuration:
+--------------
+{{- if .Values.secrets.existingSecret }}
+✓ Using existing secret: {{ .Values.secrets.existingSecret }}
+{{- else }}
+⚠ Using inline secrets (not recommended for production)
+{{- end }}
+
+{{- if .Values.postgresql.enabled }}
+✓ Using built-in PostgreSQL (subchart)
+  Connection: {{ include "observability-ai.fullname" . }}-postgresql:5432
+{{- else }}
+✓ Using external PostgreSQL
+  {{- if .Values.config.database.external.host }}
+  Host: {{ .Values.config.database.external.host }}:{{ .Values.config.database.external.port }}
+  {{- else }}
+  ⚠ Warning: External database host not configured in config.database.external.host
+  {{- end }}
+{{- end }}
+
+{{- if .Values.redis.enabled }}
+✓ Using built-in Redis (subchart)
+  Connection: {{ include "observability-ai.fullname" . }}-redis-master:6379
+{{- else }}
+✓ Using external Redis
+  {{- if .Values.config.redis.external.host }}
+  Host: {{ .Values.config.redis.external.host }}:{{ .Values.config.redis.external.port }}
+  {{- else }}
+  ⚠ Warning: External Redis host not configured in config.redis.external.host
+  {{- end }}
+{{- end }}
+
+Gin Mode: {{ .Values.config.server.ginMode }}
+{{- if ne .Values.config.server.ginMode "release" }}
+⚠ Warning: Not running in release mode (current: {{ .Values.config.server.ginMode }})
+{{- end }}
+
+{{- if .Values.config.auth.allowAnonymous }}
+⚠ Warning: Anonymous access is enabled (not recommended for production)
+{{- end }}
+
+{{- if not .Values.config.query.enableSafetyChecks }}
+⚠ Warning: Safety checks are disabled (not recommended for production)
+{{- end }}
+
+Monitoring:
+-----------
+Check pod status:
+  $ kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+
+View logs:
+  $ kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "observability-ai.name" . }},app.kubernetes.io/component=query-processor
+  $ kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "observability-ai.name" . }},app.kubernetes.io/component=web
+
+{{- if or .Values.queryProcessor.autoscaling.enabled .Values.web.autoscaling.enabled }}
+
+Autoscaling is enabled. Check HPA status:
+  $ kubectl get hpa -n {{ .Release.Namespace }}
+{{- end }}
+
+Next Steps:
+-----------
+1. Verify all pods are running:
+   $ kubectl get pods -n {{ .Release.Namespace }}
+
+2. Test the API health endpoint:
+   $ kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "observability-ai.fullname" . }}-query-processor {{ .Values.queryProcessor.service.port }}:{{ .Values.queryProcessor.service.port }}
+   $ curl http://localhost:{{ .Values.queryProcessor.service.port }}/health
+
+3. Access the Web UI (if enabled):
+   $ kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "observability-ai.fullname" . }}-web {{ .Values.web.service.port }}:{{ .Values.web.service.port }}
+   Open: http://localhost:{{ .Values.web.service.port }}
+
+{{- if not .Values.secrets.existingSecret }}
+
+⚠️  IMPORTANT - Production Deployment:
+--------------------------------------
+You are using inline secrets. For production deployments:
+
+1. Create a Kubernetes secret with required keys:
+   - claude-api-key
+   - jwt-secret (at least 32 characters)
+   - db-password
+   - redis-password
+
+2. Update your values file:
+   secrets:
+     existingSecret: "your-secret-name"
+
+3. Consider using external secret management:
+   - External Secrets Operator with Vault/AWS/Azure
+   - Sealed Secrets
+   - Cloud provider secret managers
+
+See the chart README for more details.
+{{- end }}
+
+For more information, visit:
+  Chart: https://github.com/seanankenbruck/observability-ai
+  Documentation: https://github.com/seanankenbruck/observability-ai/tree/main/helm/observability-ai

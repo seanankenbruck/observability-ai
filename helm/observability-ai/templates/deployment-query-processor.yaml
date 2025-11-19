@@ -1,0 +1,133 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "observability-ai.fullname" . }}-query-processor
+  labels:
+    {{- include "observability-ai.queryProcessor.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.queryProcessor.autoscaling.enabled }}
+  replicas: {{ .Values.queryProcessor.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "observability-ai.queryProcessor.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.queryProcessor.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "observability-ai.queryProcessor.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "observability-ai.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.queryProcessor.podSecurityContext | nindent 8 }}
+      initContainers:
+      # Wait for database migrations to complete
+      - name: wait-for-migration
+        image: bitnami/kubectl:latest
+        command:
+          - sh
+          - -c
+          - |
+            echo "Waiting for migration job to complete..."
+            kubectl wait --for=condition=complete --timeout=300s job/{{ include "observability-ai.fullname" . }}-migrate -n {{ .Release.Namespace }}
+            echo "Migration completed successfully!"
+      containers:
+      - name: query-processor
+        securityContext:
+          {{- toYaml .Values.queryProcessor.securityContext | nindent 12 }}
+        image: "{{ .Values.queryProcessor.image.repository }}:{{ .Values.queryProcessor.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.queryProcessor.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.queryProcessor.service.port }}
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: {{ include "observability-ai.fullname" . }}
+        env:
+        # Secrets from mounted files (our config package will read these)
+        - name: CLAUDE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "observability-ai.secretName" . }}
+              key: claude-api-key
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "observability-ai.secretName" . }}
+              key: jwt-secret
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "observability-ai.secretName" . }}
+              key: db-password
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "observability-ai.secretName" . }}
+              key: redis-password
+        {{- if and .Values.config.mimir.authType (eq .Values.config.mimir.authType "basic") }}
+        - name: MIMIR_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "observability-ai.secretName" . }}
+              key: mimir-username
+        - name: MIMIR_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "observability-ai.secretName" . }}
+              key: mimir-password
+        {{- else if and .Values.config.mimir.authType (eq .Values.config.mimir.authType "bearer") }}
+        - name: MIMIR_BEARER_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "observability-ai.secretName" . }}
+              key: mimir-bearer-token
+        {{- end }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          {{- toYaml .Values.queryProcessor.resources | nindent 12 }}
+        {{- with .Values.queryProcessor.volumeMounts }}
+        volumeMounts:
+          {{- toYaml . | nindent 12 }}
+        {{- end }}
+      {{- with .Values.queryProcessor.volumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.queryProcessor.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.queryProcessor.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.queryProcessor.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

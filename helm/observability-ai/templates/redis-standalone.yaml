@@ -1,0 +1,76 @@
+{{- if not .Values.redis.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: observability-ai-redis-standalone
+  labels:
+    {{- include "observability-ai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  type: ClusterIP
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: redis
+  selector:
+    {{- include "observability-ai.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: observability-ai-redis-standalone
+  labels:
+    {{- include "observability-ai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  serviceName: observability-ai-redis-standalone
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "observability-ai.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: redis
+  template:
+    metadata:
+      labels:
+        {{- include "observability-ai.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7.2-alpine
+        imagePullPolicy: IfNotPresent
+        command:
+          - sh
+          - -c
+          - |
+            redis-server --requirepass "$REDIS_PASSWORD" --appendonly yes
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "observability-ai.secretName" . }}
+              key: redis-password
+        ports:
+        - name: redis
+          containerPort: 6379
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+  volumeClaimTemplates:
+  - metadata:
+      name: redis-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 8Gi
+{{- end }}

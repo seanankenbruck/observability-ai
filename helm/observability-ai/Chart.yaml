@@ -1,0 +1,34 @@
+apiVersion: v2
+name: observability-ai
+description: AI-powered natural language to PromQL query processor for observability platforms
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - observability
+  - prometheus
+  - promql
+  - ai
+  - llm
+  - mimir
+home: https://github.com/seanankenbruck/observability-ai
+sources:
+  - https://github.com/seanankenbruck/observability-ai
+maintainers:
+  - name: Sean Ankenbruck
+    url: https://github.com/seanankenbruck
+
+# Dependencies - optional subcharts for PostgreSQL and Redis
+dependencies:
+  - name: postgresql
+    version: "13.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+    tags:
+      - database
+  - name: redis
+    version: "18.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled
+    tags:
+      - cache
