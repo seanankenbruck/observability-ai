@@ -287,33 +287,19 @@ config:
 # PostgreSQL subchart configuration
 # See https://github.com/bitnami/charts/tree/main/bitnami/postgresql
 postgresql:
-  enabled: true
+  enabled: false  # Disabled - using standalone PostgreSQL with official image instead
   auth:
     username: obs_ai
-    # Password will be read from existingSecret if set, otherwise use this value
-    password: changeme  # CHANGE IN PRODUCTION - only used if secrets.existingSecret is not set
+    password: changeme
     database: observability_ai
-    # Use existing secret for PostgreSQL
-    existingSecret: ""  # Will be overridden by secrets.existingSecret via parent chart
-    secretKeys:
-      adminPasswordKey: db-password
-      userPasswordKey: db-password
-  primary:
-    persistence:
-      enabled: true
-      size: 8Gi
-    resources:
-      limits:
-        cpu: 1000m
-        memory: 1Gi
-      requests:
-        cpu: 250m
-        memory: 256Mi
-    # Install pgvector extension via initdb scripts
-    initdb:
-      scripts:
-        create_extensions.sql: |
-          CREATE EXTENSION IF NOT EXISTS vector;
+
+# External PostgreSQL configuration (when postgresql.enabled=false)
+externalDatabase:
+  host: observability-ai-postgresql-standalone
+  port: 5432
+  username: obs_ai
+  database: observability_ai
+  password: changeme  # Only used if not using existingSecret
 
 # Redis subchart configuration
 # See https://github.com/bitnami/charts/tree/main/bitnami/redis
