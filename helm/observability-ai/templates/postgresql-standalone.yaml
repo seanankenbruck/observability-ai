@@ -39,7 +39,7 @@ spec:
     spec:
       containers:
       - name: postgresql
-        image: postgres:16-alpine
+        image: pgvector/pgvector:pg16
         imagePullPolicy: IfNotPresent
         env:
         - name: POSTGRES_USER
@@ -71,7 +71,7 @@ spec:
             command:
             - /bin/sh
             - -c
-            - pg_isready -U {{ .Values.externalDatabase.username | quote }}
+            - pg_isready -U {{ .Values.externalDatabase.username | quote }} -d {{ .Values.externalDatabase.database | quote }}
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5
@@ -80,7 +80,7 @@ spec:
             command:
             - /bin/sh
             - -c
-            - pg_isready -U {{ .Values.externalDatabase.username | quote }}
+            - pg_isready -U {{ .Values.externalDatabase.username | quote }} -d {{ .Values.externalDatabase.database | quote }}
           initialDelaySeconds: 5
           periodSeconds: 5
           timeoutSeconds: 3
