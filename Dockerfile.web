@@ -24,6 +24,10 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 # Copy nginx configuration
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
+# Set default API backend URL (can be overridden via environment variable)
+ENV API_BACKEND_URL=query-processor:8080
+
 EXPOSE 3000
 
+# Nginx will automatically process templates and substitute environment variables
 CMD ["nginx", "-g", "daemon off;"]
