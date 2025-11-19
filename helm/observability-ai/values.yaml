@@ -250,6 +250,7 @@ config:
     authType: "none"  # Options: none, basic, bearer
     tenantId: "demo"
     timeout: "30s"
+    backendType: "auto"  # Options: auto (detect), mimir, prometheus
 
   # Service discovery
   discovery:
