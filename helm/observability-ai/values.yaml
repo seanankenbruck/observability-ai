@@ -286,8 +286,6 @@ config:
 
 # PostgreSQL subchart configuration
 # See https://github.com/bitnami/charts/tree/main/bitnami/postgresql
-# Note: Bitnami subcharts will use their default images from docker.io/bitnami
-# For ARM64 compatibility, the Bitnami chart will automatically pull the correct arch
 postgresql:
   enabled: true
   auth:
@@ -311,11 +309,11 @@ postgresql:
       requests:
         cpu: 250m
         memory: 256Mi
-  # Use PG Vector image instead which is known to work on ARM64
-  image:
-    registry: docker.io
-    repository: pgvector/pgvector
-    tag: "pg16"
+    # Install pgvector extension via initdb scripts
+    initdb:
+      scripts:
+        create_extensions.sql: |
+          CREATE EXTENSION IF NOT EXISTS vector;
 
 # Redis subchart configuration
 # See https://github.com/bitnami/charts/tree/main/bitnami/redis
