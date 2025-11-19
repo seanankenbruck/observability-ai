@@ -134,6 +134,10 @@ web:
     sessionAffinity: None
     sessionAffinityConfig: {}
 
+  # Backend API configuration for nginx proxy
+  # The API_BACKEND_URL is automatically set to: <release-name>-query-processor:<port>
+  # This ensures the web frontend can proxy requests to the backend API
+
   resources:
     limits:
       cpu: 500m
