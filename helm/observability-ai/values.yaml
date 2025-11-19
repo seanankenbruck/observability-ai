@@ -56,7 +56,7 @@ queryProcessor:
   replicaCount: 2
 
   image:
-    repository: docker.io/seanankenbruck/observability-ai-query-processor
+    repository: ghcr.io/seanankenbruck/observability-ai-query-processor
     pullPolicy: IfNotPresent
     # Overrides the image tag whose default is the chart appVersion
     tag: ""
@@ -123,7 +123,7 @@ web:
   replicaCount: 2
 
   image:
-    repository: docker.io/seanankenbruck/observability-ai-web
+    repository: ghcr.io/seanankenbruck/observability-ai-web
     pullPolicy: IfNotPresent
     tag: ""
 
@@ -174,15 +174,13 @@ migration:
   enabled: true
 
   image:
-    repository: docker.io/seanankenbruck/observability-ai-query-processor
+    repository: ghcr.io/seanankenbruck/observability-ai-migrate
     pullPolicy: IfNotPresent
     tag: ""
 
   # Command to run migrations
   command:
-    - "/bin/sh"
-    - "-c"
-    - "echo 'Running database migrations...' && sleep 5 && echo 'Migrations complete'"
+    - "./migrate"
 
   # Job configuration
   backoffLimit: 3

@@ -73,7 +73,7 @@ helm install observability-ai ./helm/observability-ai \
 |-----------|-------------|---------|
 | `queryProcessor.enabled` | Enable query processor deployment | `true` |
 | `queryProcessor.replicaCount` | Number of replicas | `2` |
-| `queryProcessor.image.repository` | Image repository | `docker.io/seanankenbruck/observability-ai-query-processor` |
+| `queryProcessor.image.repository` | Image repository | `ghcr.io/seanankenbruck/observability-ai-query-processor` |
 | `queryProcessor.image.tag` | Image tag | Chart appVersion |
 | `queryProcessor.service.type` | Service type | `ClusterIP` |
 | `queryProcessor.service.port` | Service port | `8080` |
@@ -87,7 +87,7 @@ helm install observability-ai ./helm/observability-ai \
 |-----------|-------------|---------|
 | `web.enabled` | Enable web UI deployment | `true` |
 | `web.replicaCount` | Number of replicas | `2` |
-| `web.image.repository` | Image repository | `docker.io/seanankenbruck/observability-ai-web` |
+| `web.image.repository` | Image repository | `ghcr.io/seanankenbruck/observability-ai-web` |
 | `web.image.tag` | Image tag | Chart appVersion |
 | `web.service.type` | Service type | `ClusterIP` |
 | `web.service.port` | Service port | `3000` |
