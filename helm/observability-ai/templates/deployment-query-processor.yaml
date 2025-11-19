@@ -64,7 +64,7 @@ spec:
             secretKeyRef:
               name: {{ include "observability-ai.secretName" . }}
               key: redis-password
-        {{- if and .Values.mimir.auth.type (eq .Values.mimir.auth.type "basic") }}
+        {{- if and .Values.config.mimir.authType (eq .Values.config.mimir.authType "basic") }}
         - name: MIMIR_USERNAME
           valueFrom:
             secretKeyRef:
@@ -75,7 +75,7 @@ spec:
             secretKeyRef:
               name: {{ include "observability-ai.secretName" . }}
               key: mimir-password
-        {{- else if and .Values.mimir.auth.type (eq .Values.mimir.auth.type "bearer") }}
+        {{- else if and .Values.config.mimir.authType (eq .Values.config.mimir.authType "bearer") }}
         - name: MIMIR_BEARER_TOKEN
           valueFrom:
             secretKeyRef:
