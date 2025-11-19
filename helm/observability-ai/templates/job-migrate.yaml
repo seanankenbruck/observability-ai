@@ -49,12 +49,12 @@ spec:
         - name: DB_NAME
           valueFrom:
             configMapKeyRef:
-              name: {{ include "observability-ai.fullname" . }}-config
+              name: {{ include "observability-ai.fullname" . }}
               key: DB_NAME
         - name: DB_USER
           valueFrom:
             configMapKeyRef:
-              name: {{ include "observability-ai.fullname" . }}-config
+              name: {{ include "observability-ai.fullname" . }}
               key: DB_USER
         - name: DB_PASSWORD
           valueFrom:
@@ -64,7 +64,7 @@ spec:
         - name: DB_SSLMODE
           valueFrom:
             configMapKeyRef:
-              name: {{ include "observability-ai.fullname" . }}-config
+              name: {{ include "observability-ai.fullname" . }}
               key: DB_SSLMODE
         {{- with .Values.migration.extraEnv }}
         {{- toYaml . | nindent 8 }}
