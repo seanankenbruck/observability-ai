@@ -171,6 +171,9 @@ services:
       context: .
       dockerfile: Dockerfile.web
     container_name: observability-ai-web
+    environment:
+      # Backend API URL for nginx proxy (service name matches docker-compose service)
+      API_BACKEND_URL: query-processor:8080
     ports:
       - "3000:3000"
     depends_on:
