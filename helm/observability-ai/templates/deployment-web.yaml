@@ -39,9 +39,12 @@ spec:
           containerPort: {{ .Values.web.service.port }}
           protocol: TCP
         env:
-        # Backend API URL
+        # Backend API URL (for runtime JavaScript)
         - name: API_URL
           value: {{ printf "http://%s-query-processor:%d" (include "observability-ai.fullname" .) (.Values.queryProcessor.service.port | int) | quote }}
+        # Backend URL for nginx proxy (without http:// prefix)
+        - name: API_BACKEND_URL
+          value: {{ printf "%s-query-processor:%d" (include "observability-ai.fullname" .) (.Values.queryProcessor.service.port | int) | quote }}
         livenessProbe:
           httpGet:
             path: /
