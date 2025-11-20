@@ -26,12 +26,16 @@ start-frontend: ## Start frontend development server
 
 start-dev-docker: ## Start everything with Docker Compose (including query processor)
 	@echo "Starting development environment with Docker..."
-	@cp deploy/configs/development.env .env
+	@if [ ! -f .env ]; then \
+		echo "❌ .env file not found"; \
+		echo "Please create a .env file with your configuration (see .env.example)"; \
+		exit 1; \
+	fi
 	@echo "Checking for Claude API key..."
 	@set -a; source .env; set +a; \
 	if [ -z "$$CLAUDE_API_KEY" ]; then \
-		echo "❌ CLAUDE_API_KEY not found in development.env"; \
-		echo "Please add CLAUDE_API_KEY=your-api-key to deploy/configs/development.env"; \
+		echo "❌ CLAUDE_API_KEY not found in .env"; \
+		echo "Please add CLAUDE_API_KEY=your-api-key to .env"; \
 		exit 1; \
 	fi
 	docker-compose up -d
@@ -47,7 +51,7 @@ run-query-processor: ## Run the query processor locally (requires setup first)
 	@set -a; source .env; set +a; \
 	if [ -z "$$CLAUDE_API_KEY" ]; then \
 		echo "❌ CLAUDE_API_KEY not found in .env"; \
-		echo "Please add it to deploy/configs/development.env and run 'make setup'"; \
+		echo "Please add CLAUDE_API_KEY=your-api-key to .env"; \
 		exit 1; \
 	fi; \
 	go run cmd/query-processor/main.go
@@ -55,7 +59,11 @@ run-query-processor: ## Run the query processor locally (requires setup first)
 # Original Commands (preserved)
 setup: ## Start PostgreSQL and Redis for development
 	@echo "Setting up environment..."
-	@cp deploy/configs/development.env .env
+	@if [ ! -f .env ]; then \
+		echo "❌ .env file not found"; \
+		echo "Please create a .env file with your configuration (see .env.example)"; \
+		exit 1; \
+	fi
 	@echo "Starting development environment..."
 	docker-compose -f docker-compose.test.yml up -d
 	@echo "Waiting for PostgreSQL to be ready..."
