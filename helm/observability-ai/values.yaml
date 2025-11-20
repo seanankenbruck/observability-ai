@@ -59,7 +59,7 @@ queryProcessor:
     repository: ghcr.io/seanankenbruck/observability-ai-query-processor
     pullPolicy: IfNotPresent
     # Overrides the image tag whose default is the chart appVersion
-    tag: "v0.1.0"
+    tag: ""
 
   service:
     type: ClusterIP
@@ -125,7 +125,7 @@ web:
   image:
     repository: ghcr.io/seanankenbruck/observability-ai-web
     pullPolicy: IfNotPresent
-    tag: "v0.1.0"
+    tag: ""
 
   service:
     type: ClusterIP
@@ -133,6 +133,10 @@ web:
     # nodePort: 30000  # Only used if type is NodePort
     sessionAffinity: None
     sessionAffinityConfig: {}
+
+  # Backend API configuration for nginx proxy
+  # The API_BACKEND_URL is automatically set to: <release-name>-query-processor:<port>
+  # This ensures the web frontend can proxy requests to the backend API
 
   resources:
     limits:
@@ -176,7 +180,7 @@ migration:
   image:
     repository: ghcr.io/seanankenbruck/observability-ai-migrate
     pullPolicy: IfNotPresent
-    tag: "v0.1.0"
+    tag: ""
 
   # Command to run migrations
   command:
@@ -250,6 +254,7 @@ config:
     authType: "none"  # Options: none, basic, bearer
     tenantId: "demo"
     timeout: "30s"
+    backendType: "auto"  # Options: auto (detect), mimir, prometheus
 
   # Service discovery
   discovery:

@@ -55,9 +55,9 @@ type LoginRequest struct {
 
 // LoginResponse represents a login response
 type LoginResponse struct {
-	Token     string `json:"token"`
-	ExpiresAt string `json:"expires_at"`
 	User      *User  `json:"user"`
+	ExpiresAt string `json:"expires_at"`
+	Message   string `json:"message"`
 }
 
 // RegisterRequest represents a registration request
@@ -87,14 +87,6 @@ func (ah *AuthHandlers) Register(c *gin.Context) {
 		return
 	}
 
-	// Create JWT token
-	token, err := ah.authManager.CreateJWTToken(user)
-	if err != nil {
-		enhancedErr := errors.NewTokenCreationError(err)
-		c.JSON(http.StatusInternalServerError, formatAuthErrorResponse(enhancedErr))
-		return
-	}
-
 	// Create session
 	session, err := ah.authManager.CreateSession(user.ID)
 	if err != nil {
@@ -114,11 +106,11 @@ func (ah *AuthHandlers) Register(c *gin.Context) {
 		true,  // httpOnly
 	)
 
-	// Return response
+	// Return response (no token exposed to frontend)
 	c.JSON(http.StatusCreated, LoginResponse{
-		Token:     token,
-		ExpiresAt: time.Now().Add(ah.authManager.config.JWTExpiry).Format(time.RFC3339),
 		User:      user,
+		ExpiresAt: time.Now().Add(ah.authManager.config.SessionExpiry).Format(time.RFC3339),
+		Message:   "Registration successful. Session created.",
 	})
 }
 
@@ -146,14 +138,6 @@ func (ah *AuthHandlers) Login(c *gin.Context) {
 		return
 	}
 
-	// Create JWT token
-	token, err := ah.authManager.CreateJWTToken(user)
-	if err != nil {
-		enhancedErr := errors.NewTokenCreationError(err)
-		c.JSON(http.StatusInternalServerError, formatAuthErrorResponse(enhancedErr))
-		return
-	}
-
 	// Create session
 	session, err := ah.authManager.CreateSession(user.ID)
 	if err != nil {
@@ -173,11 +157,11 @@ func (ah *AuthHandlers) Login(c *gin.Context) {
 		true,  // httpOnly
 	)
 
-	// Return response
+	// Return response (no token exposed to frontend)
 	c.JSON(http.StatusOK, LoginResponse{
-		Token:     token,
-		ExpiresAt: time.Now().Add(ah.authManager.config.JWTExpiry).Format(time.RFC3339),
 		User:      user,
+		ExpiresAt: time.Now().Add(ah.authManager.config.SessionExpiry).Format(time.RFC3339),
+		Message:   "Login successful. Session created.",
 	})
 }
 

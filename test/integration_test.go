@@ -40,7 +40,8 @@ func TestMimirDiscoveryIntegration(t *testing.T) {
 	mapper := NewMockSemanticMapper()
 
 	// Setup: Create discovery service
-	client := mimir.NewClient(mimirServer.URL, mimir.AuthConfig{Type: "none"}, 5*time.Second)
+	// Use Mimir backend type explicitly for tests to avoid auto-detection
+	client := mimir.NewClientWithBackend(mimirServer.URL, mimir.AuthConfig{Type: "none"}, 5*time.Second, mimir.BackendTypeMimir)
 	discoveryConfig := mimir.DiscoveryConfig{
 		Enabled:           true,
 		Interval:          1 * time.Minute,
@@ -229,7 +230,8 @@ func TestEndToEndDiscoveryFlow(t *testing.T) {
 		mapper := NewMockSemanticMapper()
 
 		// Step 3: Create Mimir client
-		client := mimir.NewClient(mimirServer.URL, mimir.AuthConfig{Type: "none"}, 5*time.Second)
+		// Use Mimir backend type explicitly for tests to avoid auto-detection
+	client := mimir.NewClientWithBackend(mimirServer.URL, mimir.AuthConfig{Type: "none"}, 5*time.Second, mimir.BackendTypeMimir)
 
 		// Step 4: Test connection
 		err := client.TestConnection(ctx)

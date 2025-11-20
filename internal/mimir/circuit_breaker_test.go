@@ -12,7 +12,8 @@ import (
 
 func TestMimirCircuitBreakerClient_Success(t *testing.T) {
 	// Create a real Mimir client (it will fail to connect, but that's ok for this test)
-	client := NewClient("http://localhost:9009", AuthConfig{Type: "none"}, 5*time.Second)
+	// Use Mimir backend type explicitly for tests to avoid auto-detection
+	client := NewClientWithBackend("http://localhost:9009", AuthConfig{Type: "none"}, 5*time.Second, BackendTypeMimir)
 
 	// Create circuit breaker client
 	cbClient := NewCircuitBreakerClient(client, "test-mimir-cb", DefaultCircuitBreakerConfig)
@@ -23,7 +24,8 @@ func TestMimirCircuitBreakerClient_Success(t *testing.T) {
 
 func TestMimirCircuitBreakerClient_OpensAfterFailures(t *testing.T) {
 	// Create a client pointing to non-existent endpoint
-	client := NewClient("http://localhost:19999", AuthConfig{Type: "none"}, 100*time.Millisecond)
+	// Use Mimir backend type explicitly for tests to avoid auto-detection
+	client := NewClientWithBackend("http://localhost:19999", AuthConfig{Type: "none"}, 100*time.Millisecond, BackendTypeMimir)
 
 	// Configure circuit breaker with lower threshold for testing
 	config := CircuitBreakerConfig{
@@ -58,7 +60,8 @@ func TestMimirCircuitBreakerClient_OpensAfterFailures(t *testing.T) {
 
 func TestMimirCircuitBreakerClient_QueryRange(t *testing.T) {
 	// Create a client pointing to non-existent endpoint
-	client := NewClient("http://localhost:19999", AuthConfig{Type: "none"}, 100*time.Millisecond)
+	// Use Mimir backend type explicitly for tests to avoid auto-detection
+	client := NewClientWithBackend("http://localhost:19999", AuthConfig{Type: "none"}, 100*time.Millisecond, BackendTypeMimir)
 
 	config := CircuitBreakerConfig{
 		MaxRequests: 1,
@@ -85,7 +88,8 @@ func TestMimirCircuitBreakerClient_QueryRange(t *testing.T) {
 
 func TestMimirCircuitBreakerClient_GetMetricNames(t *testing.T) {
 	// Create a client pointing to non-existent endpoint
-	client := NewClient("http://localhost:19999", AuthConfig{Type: "none"}, 100*time.Millisecond)
+	// Use Mimir backend type explicitly for tests to avoid auto-detection
+	client := NewClientWithBackend("http://localhost:19999", AuthConfig{Type: "none"}, 100*time.Millisecond, BackendTypeMimir)
 
 	config := CircuitBreakerConfig{
 		MaxRequests: 1,
@@ -110,7 +114,8 @@ func TestMimirCircuitBreakerClient_GetMetricNames(t *testing.T) {
 
 func TestMimirCircuitBreakerClient_GetLabelValues(t *testing.T) {
 	// Create a client pointing to non-existent endpoint
-	client := NewClient("http://localhost:19999", AuthConfig{Type: "none"}, 100*time.Millisecond)
+	// Use Mimir backend type explicitly for tests to avoid auto-detection
+	client := NewClientWithBackend("http://localhost:19999", AuthConfig{Type: "none"}, 100*time.Millisecond, BackendTypeMimir)
 
 	config := CircuitBreakerConfig{
 		MaxRequests: 1,
@@ -135,7 +140,8 @@ func TestMimirCircuitBreakerClient_GetLabelValues(t *testing.T) {
 
 func TestMimirCircuitBreakerClient_GetMetricMetadata(t *testing.T) {
 	// Create a client pointing to non-existent endpoint
-	client := NewClient("http://localhost:19999", AuthConfig{Type: "none"}, 100*time.Millisecond)
+	// Use Mimir backend type explicitly for tests to avoid auto-detection
+	client := NewClientWithBackend("http://localhost:19999", AuthConfig{Type: "none"}, 100*time.Millisecond, BackendTypeMimir)
 
 	config := CircuitBreakerConfig{
 		MaxRequests: 1,
@@ -160,7 +166,8 @@ func TestMimirCircuitBreakerClient_GetMetricMetadata(t *testing.T) {
 
 func TestMimirCircuitBreakerClient_TestConnection(t *testing.T) {
 	// Create a client pointing to non-existent endpoint
-	client := NewClient("http://localhost:19999", AuthConfig{Type: "none"}, 100*time.Millisecond)
+	// Use Mimir backend type explicitly for tests to avoid auto-detection
+	client := NewClientWithBackend("http://localhost:19999", AuthConfig{Type: "none"}, 100*time.Millisecond, BackendTypeMimir)
 
 	config := CircuitBreakerConfig{
 		MaxRequests: 1,
@@ -192,7 +199,8 @@ type mockFailingClient struct {
 func TestCircuitBreakerRecovery(t *testing.T) {
 	// This is a conceptual test - in practice, you'd use a mock server
 	// For now, we verify the circuit breaker behavior with counts
-	client := NewClient("http://localhost:19999", AuthConfig{Type: "none"}, 50*time.Millisecond)
+	// Use Mimir backend type explicitly for tests to avoid auto-detection
+	client := NewClientWithBackend("http://localhost:19999", AuthConfig{Type: "none"}, 50*time.Millisecond, BackendTypeMimir)
 
 	config := CircuitBreakerConfig{
 		MaxRequests: 1,
@@ -228,7 +236,8 @@ func TestCircuitBreakerRecovery(t *testing.T) {
 }
 
 func TestCircuitBreakerCustomConfig(t *testing.T) {
-	client := NewClient("http://localhost:9009", AuthConfig{Type: "none"}, 5*time.Second)
+	// Use Mimir backend type explicitly for tests to avoid auto-detection
+	client := NewClientWithBackend("http://localhost:9009", AuthConfig{Type: "none"}, 5*time.Second, BackendTypeMimir)
 
 	// Custom configuration
 	customConfig := CircuitBreakerConfig{

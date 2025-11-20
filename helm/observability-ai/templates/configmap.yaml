@@ -17,6 +17,7 @@ data:
   MIMIR_AUTH_TYPE: {{ .Values.config.mimir.authType | quote }}
   MIMIR_TENANT_ID: {{ .Values.config.mimir.tenantId | quote }}
   MIMIR_TIMEOUT: {{ .Values.config.mimir.timeout | quote }}
+  MIMIR_BACKEND_TYPE: {{ .Values.config.mimir.backendType | quote }}
 
   # Discovery Configuration
   DISCOVERY_ENABLED: {{ .Values.config.discovery.enabled | quote }}

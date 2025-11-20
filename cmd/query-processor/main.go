@@ -60,8 +60,8 @@ func main() {
 		log.Fatal("Failed to initialize semantic mapper:", err)
 	}
 
-	// Initialize Mimir client
-	mimirClient := mimir.NewClient(
+	// Initialize Mimir client with backend type detection
+	mimirClient := mimir.NewClientWithBackend(
 		cfg.Mimir.Endpoint,
 		mimir.AuthConfig{
 			Type:        cfg.Mimir.AuthType,
@@ -71,6 +71,7 @@ func main() {
 			TenantID:    cfg.Mimir.TenantID,
 		},
 		cfg.Mimir.Timeout,
+		mimir.BackendType(cfg.Mimir.BackendType),
 	)
 
 	// Initialize discovery service

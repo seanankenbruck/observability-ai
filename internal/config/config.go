@@ -67,6 +67,7 @@ type MimirConfig struct {
 	BearerToken string
 	TenantID    string
 	Timeout     time.Duration
+	BackendType string // "auto", "mimir", "prometheus"
 }
 
 // DiscoveryConfig holds service discovery configuration
@@ -170,6 +171,7 @@ func (l *Loader) Load(ctx context.Context) (*Config, error) {
 		BearerToken: l.getString(ctx, "MIMIR_BEARER_TOKEN", ""),
 		TenantID:    l.getString(ctx, "MIMIR_TENANT_ID", "demo"),
 		Timeout:     l.getDuration(ctx, "MIMIR_TIMEOUT", 30*time.Second),
+		BackendType: l.getString(ctx, "MIMIR_BACKEND_TYPE", "auto"),
 	}
 
 	// Load Discovery config

@@ -1,7 +1,8 @@
 # Ignore environment variable files
 .env
-.env.*
-deploy/configs/development.env
+.env.local
+.env.development
+.env.production
 
 # Ignore local development configs (use .example versions)
 mimir-config.yaml
@@ -32,3 +33,13 @@ vendor/
 *.swp
 *~
 .DS_Store
+
+# Build outputs
+web/dist/
+web/node_modules/
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp

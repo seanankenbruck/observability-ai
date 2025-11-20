@@ -5,15 +5,9 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
 class ApiClient {
   private baseUrl: string;
-  private getToken: (() => string | null) | null = null;
 
   constructor(baseUrl: string = API_BASE_URL) {
     this.baseUrl = baseUrl;
-  }
-
-  // Set token getter function (to be called by AuthProvider)
-  setTokenGetter(getter: () => string | null) {
-    this.getToken = getter;
   }
 
   private async request<T>(
@@ -22,17 +16,14 @@ class ApiClient {
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
 
-    // Get authentication token
-    const token = this.getToken ? this.getToken() : null;
-
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
       ...options.headers,
     };
 
     const config: RequestInit = {
       headers,
+      credentials: 'include', // Include cookies for session authentication
       ...options,
     };
 
