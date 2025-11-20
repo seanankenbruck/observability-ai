@@ -32,3 +32,13 @@ vendor/
 *.swp
 *~
 .DS_Store
+
+# Build outputs
+web/dist/
+web/node_modules/
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp

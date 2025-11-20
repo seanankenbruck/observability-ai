@@ -11,7 +11,7 @@ import { useAuth } from './contexts/AuthContext';
 type ActiveTab = 'chat' | 'services' | 'history';
 
 function App() {
-  const { isAuthenticated, isLoading: authLoading, token, logout, user } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, logout, user } = useAuth();
   const [activeTab, setActiveTab] = useState<ActiveTab>('chat');
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -25,11 +25,6 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [isServicesLoading, setIsServicesLoading] = useState(true);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
-
-  // Setup API client with token getter
-  useEffect(() => {
-    apiClient.setTokenGetter(() => token);
-  }, [token]);
 
   // Load services on mount (only when authenticated)
   useEffect(() => {

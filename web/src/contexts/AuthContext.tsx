@@ -3,54 +3,45 @@ import { User, LoginRequest, LoginResponse } from '../types/api';
 
 interface AuthContextType {
   user: User | null;
-  token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
-  setToken: (token: string | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const TOKEN_KEY = 'auth_token';
-const USER_KEY = 'auth_user';
-
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setTokenState] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load token and user from localStorage on mount
+  // Check session on mount
   useEffect(() => {
-    const storedToken = localStorage.getItem(TOKEN_KEY);
-    const storedUser = localStorage.getItem(USER_KEY);
-
-    if (storedToken && storedUser) {
-      try {
-        const parsedUser = JSON.parse(storedUser);
-        setTokenState(storedToken);
-        setUser(parsedUser);
-      } catch (error) {
-        console.error('Failed to parse stored user:', error);
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(USER_KEY);
-      }
-    }
-    setIsLoading(false);
+    checkSession();
   }, []);
 
-  const setToken = (newToken: string | null) => {
-    setTokenState(newToken);
-    if (newToken) {
-      localStorage.setItem(TOKEN_KEY, newToken);
-    } else {
-      localStorage.removeItem(TOKEN_KEY);
+  const checkSession = async () => {
+    try {
+      const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
+      const response = await fetch(`${API_BASE_URL}/auth/me`, {
+        credentials: 'include', // Include cookies
+      });
+
+      if (response.ok) {
+        const userData = await response.json();
+        setUser(userData);
+      } else {
+        setUser(null);
+      }
+    } catch (error) {
+      console.error('Failed to check session:', error);
+      setUser(null);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const login = async (username: string, password: string) => {
-    // Use relative path so it works with both Vite proxy (dev) and nginx proxy (production/docker)
     const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
     const response = await fetch(`${API_BASE_URL}/auth/login`, {
@@ -58,6 +49,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       headers: {
         'Content-Type': 'application/json',
       },
+      credentials: 'include', // Include cookies
       body: JSON.stringify({ username, password } as LoginRequest),
     });
 
@@ -67,47 +59,33 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
 
     const data: LoginResponse = await response.json();
-
-    setToken(data.token);
     setUser(data.user);
-    localStorage.setItem(USER_KEY, JSON.stringify(data.user));
   };
 
   const logout = async () => {
-    // Use relative path so it works with both Vite proxy (dev) and nginx proxy (production/docker)
     const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
-    // Call logout endpoint (best effort)
-    if (token) {
-      try {
-        await fetch(`${API_BASE_URL}/auth/logout`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
-      } catch (error) {
-        console.error('Logout request failed:', error);
-      }
+    try {
+      await fetch(`${API_BASE_URL}/auth/logout`, {
+        method: 'POST',
+        credentials: 'include', // Include cookies
+      });
+    } catch (error) {
+      console.error('Logout request failed:', error);
     }
 
     // Clear local state
-    setToken(null);
     setUser(null);
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
   };
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        token,
-        isAuthenticated: !!token && !!user,
+        isAuthenticated: !!user,
         isLoading,
         login,
         logout,
-        setToken,
       }}
     >
       {children}

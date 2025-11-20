@@ -63,12 +63,26 @@ spec:
           failureThreshold: 3
         resources:
           {{- toYaml .Values.web.resources | nindent 12 }}
-        {{- with .Values.web.volumeMounts }}
         volumeMounts:
+        # Nginx needs writable directories for cache and config processing
+        - name: nginx-cache
+          mountPath: /var/cache/nginx
+        - name: nginx-run
+          mountPath: /var/run
+        - name: nginx-conf
+          mountPath: /etc/nginx/conf.d
+        {{- with .Values.web.volumeMounts }}
           {{- toYaml . | nindent 12 }}
         {{- end }}
-      {{- with .Values.web.volumes }}
       volumes:
+      # EmptyDir volumes for nginx writable directories
+      - name: nginx-cache
+        emptyDir: {}
+      - name: nginx-run
+        emptyDir: {}
+      - name: nginx-conf
+        emptyDir: {}
+      {{- with .Values.web.volumes }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.web.nodeSelector }}
