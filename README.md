@@ -615,4 +615,4 @@ Make sure the backend is running on port 8080 and check [web/src/utils/api.ts](w
 
 ## License
 
-[Add your license here]
+MIT License - see [LICENSE](LICENSE) file for details
