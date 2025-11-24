@@ -88,7 +88,7 @@ func (ah *AuthHandlers) Register(c *gin.Context) {
 	}
 
 	// Create session
-	session, err := ah.authManager.CreateSession(user.ID)
+	sessionID, err := ah.authManager.CreateSession(user.ID)
 	if err != nil {
 		enhancedErr := errors.NewSessionCreationError(err)
 		c.JSON(http.StatusInternalServerError, formatAuthErrorResponse(enhancedErr))
@@ -98,7 +98,7 @@ func (ah *AuthHandlers) Register(c *gin.Context) {
 	// Set session cookie
 	c.SetCookie(
 		"session_id",
-		session.ID,
+		sessionID,
 		int(ah.authManager.config.SessionExpiry.Seconds()),
 		"/",
 		"",
@@ -139,7 +139,7 @@ func (ah *AuthHandlers) Login(c *gin.Context) {
 	}
 
 	// Create session
-	session, err := ah.authManager.CreateSession(user.ID)
+	sessionID, err := ah.authManager.CreateSession(user.ID)
 	if err != nil {
 		enhancedErr := errors.NewSessionCreationError(err)
 		c.JSON(http.StatusInternalServerError, formatAuthErrorResponse(enhancedErr))
@@ -149,7 +149,7 @@ func (ah *AuthHandlers) Login(c *gin.Context) {
 	// Set session cookie
 	c.SetCookie(
 		"session_id",
-		session.ID,
+		sessionID,
 		int(ah.authManager.config.SessionExpiry.Seconds()),
 		"/",
 		"",

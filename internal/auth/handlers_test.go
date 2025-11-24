@@ -33,7 +33,7 @@ func setupTestRouter(authManager *AuthManager) *gin.Engine {
 
 // TestNewAuthHandlers tests handler creation
 func TestNewAuthHandlers(t *testing.T) {
-	am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+	am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 	handlers := NewAuthHandlers(am)
 
 	require.NotNil(t, handlers)
@@ -42,7 +42,7 @@ func TestNewAuthHandlers(t *testing.T) {
 
 // TestSetupRoutes tests route registration
 func TestSetupRoutes(t *testing.T) {
-	am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+	am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 	r := setupTestRouter(am)
 
 	// Verify routes are registered by checking they don't return 404
@@ -176,7 +176,7 @@ func TestRegister(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+			am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 			r := setupTestRouter(am)
 
 			body, _ := json.Marshal(tt.requestBody)
@@ -294,7 +294,7 @@ func TestLogin(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+			am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 			r := setupTestRouter(am)
 
 			if tt.setupUser != nil {
@@ -329,7 +329,7 @@ func TestLogout(t *testing.T) {
 			setupSession: func(am *AuthManager) string {
 				user, _ := am.CreateUserWithPassword("testuser", "test@example.com", "password123", []string{"user"})
 				session, _ := am.CreateSession(user.ID)
-				return session.ID
+				return session
 			},
 			expectedStatus: http.StatusOK,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
@@ -365,7 +365,7 @@ func TestLogout(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+			am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 			r := setupTestRouter(am)
 
 			sessionID := ""
@@ -391,7 +391,7 @@ func TestLogout(t *testing.T) {
 
 // TestGetCurrentUserHandler tests retrieving the current authenticated user handler
 func TestGetCurrentUserHandler(t *testing.T) {
-	am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+	am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 	r := setupTestRouter(am)
 
 	user, _ := am.CreateUserWithPassword("testuser", "test@example.com", "password123", []string{"user"})
@@ -406,7 +406,7 @@ func TestGetCurrentUserHandler(t *testing.T) {
 		{
 			name: "authenticated with session cookie",
 			setupRequest: func(req *http.Request) {
-				req.AddCookie(&http.Cookie{Name: "session_id", Value: session.ID})
+				req.AddCookie(&http.Cookie{Name: "session_id", Value: session})
 			},
 			expectedStatus: http.StatusOK,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
@@ -451,7 +451,7 @@ func TestGetCurrentUserHandler(t *testing.T) {
 
 // TestGetAuthStatus tests retrieving authentication status
 func TestGetAuthStatus(t *testing.T) {
-	am := NewAuthManager(AuthConfig{
+	am := NewTestAuthManager(AuthConfig{
 		JWTSecret:      "test-secret",
 		AllowAnonymous: false,
 		RateLimit:      100,
@@ -502,7 +502,7 @@ func TestGetAuthStatus(t *testing.T) {
 
 // TestCreateAPIKeyHandler tests API key creation handler
 func TestCreateAPIKeyHandler(t *testing.T) {
-	am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+	am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 	r := setupTestRouter(am)
 
 	user, _ := am.CreateUserWithPassword("testuser", "test@example.com", "password123", []string{"user"})
@@ -586,7 +586,7 @@ func TestCreateAPIKeyHandler(t *testing.T) {
 			req.Header.Set("Content-Type", "application/json")
 
 			if tt.authenticated {
-				req.AddCookie(&http.Cookie{Name: "session_id", Value: session.ID})
+				req.AddCookie(&http.Cookie{Name: "session_id", Value: session})
 			}
 
 			w := httptest.NewRecorder()
@@ -602,7 +602,7 @@ func TestCreateAPIKeyHandler(t *testing.T) {
 
 // TestListAPIKeysHandler tests listing API keys handler
 func TestListAPIKeysHandler(t *testing.T) {
-	am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+	am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 	r := setupTestRouter(am)
 
 	user, _ := am.CreateUserWithPassword("testuser", "test@example.com", "password123", []string{"user"})
@@ -649,7 +649,7 @@ func TestListAPIKeysHandler(t *testing.T) {
 			req, _ := http.NewRequest("GET", "/api/v1/api-keys", nil)
 
 			if tt.authenticated {
-				req.AddCookie(&http.Cookie{Name: "session_id", Value: session.ID})
+				req.AddCookie(&http.Cookie{Name: "session_id", Value: session})
 			}
 
 			w := httptest.NewRecorder()
@@ -665,7 +665,7 @@ func TestListAPIKeysHandler(t *testing.T) {
 
 // TestRevokeAPIKeyHandler tests revoking an API key handler
 func TestRevokeAPIKeyHandler(t *testing.T) {
-	am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+	am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 	r := setupTestRouter(am)
 
 	user, _ := am.CreateUserWithPassword("testuser", "test@example.com", "password123", []string{"user"})
@@ -717,7 +717,7 @@ func TestRevokeAPIKeyHandler(t *testing.T) {
 			req, _ := http.NewRequest("DELETE", "/api/v1/api-keys/"+tt.keyID, nil)
 
 			if tt.authenticated {
-				req.AddCookie(&http.Cookie{Name: "session_id", Value: session.ID})
+				req.AddCookie(&http.Cookie{Name: "session_id", Value: session})
 			}
 
 			w := httptest.NewRecorder()
@@ -733,7 +733,7 @@ func TestRevokeAPIKeyHandler(t *testing.T) {
 
 // TestCreateUserHandler tests admin user creation endpoint handler
 func TestCreateUserHandler(t *testing.T) {
-	am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+	am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 	r := setupTestRouter(am)
 
 	// Create admin user
@@ -758,7 +758,7 @@ func TestCreateUserHandler(t *testing.T) {
 				Email:    "newuser@example.com",
 				Roles:    []string{"user"},
 			},
-			sessionID:      adminSession.ID,
+			sessionID:      adminSession,
 			expectedStatus: http.StatusCreated,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				var response User
@@ -773,7 +773,7 @@ func TestCreateUserHandler(t *testing.T) {
 				Username: "anotheruser",
 				Email:    "another@example.com",
 			},
-			sessionID:      regularSession.ID,
+			sessionID:      regularSession,
 			expectedStatus: http.StatusForbidden,
 		},
 		{
@@ -807,7 +807,7 @@ func TestCreateUserHandler(t *testing.T) {
 
 // TestListUsersHandler tests admin user listing endpoint handler
 func TestListUsersHandler(t *testing.T) {
-	am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+	am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 	r := setupTestRouter(am)
 
 	// Create admin user
@@ -826,7 +826,7 @@ func TestListUsersHandler(t *testing.T) {
 	}{
 		{
 			name:           "admin lists users successfully",
-			sessionID:      adminSession.ID,
+			sessionID:      adminSession,
 			expectedStatus: http.StatusOK,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				var response map[string]interface{}
@@ -839,7 +839,7 @@ func TestListUsersHandler(t *testing.T) {
 		},
 		{
 			name:           "regular user cannot list users",
-			sessionID:      regularSession.ID,
+			sessionID:      regularSession,
 			expectedStatus: http.StatusForbidden,
 		},
 		{
@@ -870,7 +870,7 @@ func TestListUsersHandler(t *testing.T) {
 
 // TestGetRateLimitStats tests rate limit stats endpoint
 func TestGetRateLimitStats(t *testing.T) {
-	am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+	am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 	r := setupTestRouter(am)
 
 	// Create admin user
@@ -884,7 +884,7 @@ func TestGetRateLimitStats(t *testing.T) {
 	}{
 		{
 			name:           "admin gets rate limit stats",
-			sessionID:      adminSession.ID,
+			sessionID:      adminSession,
 			expectedStatus: http.StatusOK,
 		},
 		{
