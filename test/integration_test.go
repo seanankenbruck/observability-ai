@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v8"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/seanankenbruck/observability-ai/internal/auth"
 	"github.com/seanankenbruck/observability-ai/internal/mimir"
 	"github.com/seanankenbruck/observability-ai/internal/semantic"
@@ -130,9 +131,12 @@ func TestAuthenticatedAPIIntegration(t *testing.T) {
 	}
 
 	// Setup: Create Redis client for session management
+	mr, err := miniredis.Run()
+	require.NoError(t, err)
+	defer mr.Close()
+
 	rdb := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
-		DB:   1, // Use different DB for tests
+		Addr: mr.Addr(),
 	})
 	defer rdb.Close()
 
