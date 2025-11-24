@@ -103,8 +103,8 @@ func NewAuthManager(config AuthConfig, sessionManager *session.Manager) *AuthMan
 		sessionManager: sessionManager,
 	}
 
-	// Create default admin user
-	adminUser, _ := am.CreateUser("admin", "admin@example.com", []string{"admin", "user"})
+	// Create default admin user with fixed UUID for consistency across pods
+	adminUser := am.createDefaultAdminUser()
 	if adminUser != nil {
 		fmt.Printf("Created default admin user (ID: %s)\n", adminUser.ID)
 	}
@@ -440,6 +440,34 @@ func (am *AuthManager) ListUsers() []*User {
 }
 
 // Helper functions
+
+// createDefaultAdminUser creates the default admin user with a fixed UUID
+func (am *AuthManager) createDefaultAdminUser() *User {
+	// Use a fixed UUID for the admin user so it's consistent across all pods
+	adminID := "00000000-0000-0000-0000-000000000001"
+
+	// Check if admin already exists (shouldn't happen, but be safe)
+	am.mu.Lock()
+	defer am.mu.Unlock()
+
+	if _, exists := am.userByUsername["admin"]; exists {
+		return am.userByUsername["admin"]
+	}
+
+	user := &User{
+		ID:       adminID,
+		Username: "admin",
+		Email:    "admin@example.com",
+		Roles:    []string{"admin", "user"},
+		Metadata: make(map[string]string),
+		Active:   true,
+	}
+
+	am.users[user.ID] = user
+	am.userByUsername[user.Username] = user
+
+	return user
+}
 
 // generateRandomString generates a random string of specified length
 func generateRandomString(length int) string {
