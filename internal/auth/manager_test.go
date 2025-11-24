@@ -42,7 +42,7 @@ func TestNewAuthManager(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			am := NewAuthManager(tt.config)
+			am := NewTestAuthManager(tt.config)
 			require.NotNil(t, am)
 			assert.NotEmpty(t, am.config.JWTSecret)
 			assert.Equal(t, tt.expectedExpiry, am.config.JWTExpiry)
@@ -100,7 +100,7 @@ func TestCreateUser(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+			am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 
 			user, err := am.CreateUser(tt.username, tt.email, tt.roles)
 
@@ -132,7 +132,7 @@ func TestCreateUser(t *testing.T) {
 
 // TestGetUser tests user retrieval
 func TestGetUser(t *testing.T) {
-	am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+	am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 
 	// Create test user
 	user, err := am.CreateUser("testuser", "test@example.com", []string{"user"})
@@ -174,7 +174,7 @@ func TestGetUser(t *testing.T) {
 
 // TestCreateAPIKey tests API key creation
 func TestCreateAPIKey(t *testing.T) {
-	am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+	am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 
 	// Create test user
 	user, err := am.CreateUser("testuser", "test@example.com", []string{"user"})
@@ -249,7 +249,7 @@ func TestCreateAPIKey(t *testing.T) {
 
 // TestValidateAPIKey tests API key validation
 func TestValidateAPIKey(t *testing.T) {
-	am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+	am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 
 	// Create test user and API key
 	user, err := am.CreateUser("testuser", "test@example.com", []string{"user"})
@@ -321,7 +321,7 @@ func TestValidateAPIKey(t *testing.T) {
 
 // TestCreateJWTToken tests JWT token creation
 func TestCreateJWTToken(t *testing.T) {
-	am := NewAuthManager(AuthConfig{
+	am := NewTestAuthManager(AuthConfig{
 		JWTSecret: "test-secret",
 		JWTExpiry: 1 * time.Hour,
 	})
@@ -339,7 +339,7 @@ func TestCreateJWTToken(t *testing.T) {
 
 // TestValidateJWTToken tests JWT token validation
 func TestValidateJWTToken(t *testing.T) {
-	am := NewAuthManager(AuthConfig{
+	am := NewTestAuthManager(AuthConfig{
 		JWTSecret: "test-secret",
 		JWTExpiry: 1 * time.Hour,
 	})
@@ -403,7 +403,7 @@ func TestValidateJWTToken(t *testing.T) {
 
 // TestCreateSession tests session creation
 func TestCreateSession(t *testing.T) {
-	am := NewAuthManager(AuthConfig{
+	am := NewTestAuthManager(AuthConfig{
 		JWTSecret:     "test-secret",
 		SessionExpiry: 7 * 24 * time.Hour,
 	})
@@ -432,18 +432,19 @@ func TestCreateSession(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			session, err := am.CreateSession(tt.userID)
+			sessionID, err := am.CreateSession(tt.userID)
 
 			if tt.wantErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errContains)
 			} else {
 				require.NoError(t, err)
-				require.NotNil(t, session)
-				assert.NotEmpty(t, session.ID)
-				assert.Equal(t, tt.userID, session.UserID)
-				assert.True(t, session.Active)
-				assert.WithinDuration(t, time.Now().Add(7*24*time.Hour), session.ExpiresAt, time.Second)
+				assert.NotEmpty(t, sessionID)
+
+				// Validate the session was created correctly by retrieving it
+				user, err := am.ValidateSession(sessionID)
+				require.NoError(t, err)
+				assert.Equal(t, tt.userID, user.ID)
 			}
 		})
 	}
@@ -451,7 +452,7 @@ func TestCreateSession(t *testing.T) {
 
 // TestValidateSession tests session validation
 func TestValidateSession(t *testing.T) {
-	am := NewAuthManager(AuthConfig{
+	am := NewTestAuthManager(AuthConfig{
 		JWTSecret:     "test-secret",
 		SessionExpiry: 7 * 24 * time.Hour,
 	})
@@ -459,7 +460,7 @@ func TestValidateSession(t *testing.T) {
 	user, err := am.CreateUser("testuser", "test@example.com", []string{"user"})
 	require.NoError(t, err)
 
-	validSession, err := am.CreateSession(user.ID)
+	validSessionID, err := am.CreateSession(user.ID)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -471,7 +472,7 @@ func TestValidateSession(t *testing.T) {
 	}{
 		{
 			name:      "validate valid session",
-			sessionID: validSession.ID,
+			sessionID: validSessionID,
 			wantErr:   false,
 		},
 		{
@@ -482,12 +483,12 @@ func TestValidateSession(t *testing.T) {
 		},
 		{
 			name:      "validate revoked session",
-			sessionID: validSession.ID,
+			sessionID: validSessionID,
 			wantErr:   true,
 			setupFunc: func() {
-				am.RevokeSession(validSession.ID)
+				am.RevokeSession(validSessionID)
 			},
-			errContains: "inactive",
+			errContains: "not found",
 		},
 	}
 
@@ -497,7 +498,7 @@ func TestValidateSession(t *testing.T) {
 				tt.setupFunc()
 			}
 
-			validatedUser, session, err := am.ValidateSession(tt.sessionID)
+			validatedUser, err := am.ValidateSession(tt.sessionID)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -505,9 +506,7 @@ func TestValidateSession(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.NotNil(t, validatedUser)
-				require.NotNil(t, session)
 				assert.Equal(t, user.ID, validatedUser.ID)
-				assert.NotZero(t, session.LastSeen)
 			}
 		})
 	}
@@ -515,7 +514,7 @@ func TestValidateSession(t *testing.T) {
 
 // TestRevokeAPIKey tests API key revocation
 func TestRevokeAPIKey(t *testing.T) {
-	am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+	am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 
 	user, err := am.CreateUser("testuser", "test@example.com", []string{"user"})
 	require.NoError(t, err)
@@ -540,32 +539,30 @@ func TestRevokeAPIKey(t *testing.T) {
 
 // TestRevokeSession tests session revocation
 func TestRevokeSession(t *testing.T) {
-	am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+	am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 
 	user, err := am.CreateUser("testuser", "test@example.com", []string{"user"})
 	require.NoError(t, err)
 
-	session, err := am.CreateSession(user.ID)
+	sessionID, err := am.CreateSession(user.ID)
 	require.NoError(t, err)
 
 	// Revoke the session
-	err = am.RevokeSession(session.ID)
+	err = am.RevokeSession(sessionID)
 	require.NoError(t, err)
 
 	// Verify session is revoked
-	_, _, err = am.ValidateSession(session.ID)
+	_, err = am.ValidateSession(sessionID)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "inactive")
 
-	// Try to revoke non-existent session
+	// Try to revoke non-existent session - this should not error in Redis (delete is idempotent)
 	err = am.RevokeSession("non-existent")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not found")
+	require.NoError(t, err)
 }
 
 // TestCleanupExpired tests cleanup of expired sessions and API keys
 func TestCleanupExpired(t *testing.T) {
-	am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+	am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 
 	user, err := am.CreateUser("testuser", "test@example.com", []string{"user"})
 	require.NoError(t, err)
@@ -578,37 +575,25 @@ func TestCleanupExpired(t *testing.T) {
 	validKey, err := am.CreateAPIKey(user.ID, "valid-key", []string{"read"}, 100, 30*24*time.Hour)
 	require.NoError(t, err)
 
-	// Create expired session (manipulate expiry time)
-	expiredSession, err := am.CreateSession(user.ID)
-	require.NoError(t, err)
-	am.mu.Lock()
-	am.sessions[expiredSession.ID].ExpiresAt = time.Now().Add(-1 * time.Hour)
-	am.mu.Unlock()
-
-	// Create valid session
-	validSession, err := am.CreateSession(user.ID)
-	require.NoError(t, err)
+	// Note: Sessions are now managed in Redis with TTL auto-expiration
+	// We only test API key cleanup here
 
 	// Run cleanup
 	am.CleanupExpired()
 
-	// Verify expired items are removed
+	// Verify expired API key is removed, valid key remains
 	am.mu.RLock()
 	_, expiredKeyExists := am.apiKeys[hashAPIKey(expiredKey.Key)]
 	_, validKeyExists := am.apiKeys[hashAPIKey(validKey.Key)]
-	_, expiredSessionExists := am.sessions[expiredSession.ID]
-	_, validSessionExists := am.sessions[validSession.ID]
 	am.mu.RUnlock()
 
 	assert.False(t, expiredKeyExists, "Expired API key should be removed")
 	assert.True(t, validKeyExists, "Valid API key should remain")
-	assert.False(t, expiredSessionExists, "Expired session should be removed")
-	assert.True(t, validSessionExists, "Valid session should remain")
 }
 
 // TestListAPIKeys tests listing API keys for a user
 func TestListAPIKeys(t *testing.T) {
-	am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+	am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 
 	user1, err := am.CreateUser("user1", "user1@example.com", []string{"user"})
 	require.NoError(t, err)
@@ -645,7 +630,7 @@ func TestListAPIKeys(t *testing.T) {
 
 // TestListUsers tests listing all users
 func TestListUsers(t *testing.T) {
-	am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+	am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 
 	// Create additional users (admin already exists)
 	_, err := am.CreateUser("user1", "user1@example.com", []string{"user"})
@@ -671,7 +656,7 @@ func TestHashAPIKey(t *testing.T) {
 
 // TestConcurrentAccess tests concurrent access to auth manager
 func TestConcurrentAccess(t *testing.T) {
-	am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+	am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 
 	user, err := am.CreateUser("testuser", "test@example.com", []string{"user"})
 	require.NoError(t, err)
