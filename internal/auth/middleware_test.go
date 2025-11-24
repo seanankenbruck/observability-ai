@@ -20,7 +20,7 @@ func init() {
 
 // TestMiddleware tests the authentication middleware
 func TestMiddleware(t *testing.T) {
-	am := NewAuthManager(AuthConfig{
+	am := NewTestAuthManager(AuthConfig{
 		JWTSecret:      "test-secret",
 		RateLimit:      100,
 		AllowAnonymous: false,
@@ -68,7 +68,7 @@ func TestMiddleware(t *testing.T) {
 			setupRequest: func(req *http.Request) {
 				req.AddCookie(&http.Cookie{
 					Name:  "session_id",
-					Value: session.ID,
+					Value: session,
 				})
 			},
 			expectedStatus: http.StatusOK,
@@ -145,7 +145,7 @@ func TestMiddleware(t *testing.T) {
 
 // TestMiddlewareWithAnonymousAccess tests middleware with anonymous access enabled
 func TestMiddlewareWithAnonymousAccess(t *testing.T) {
-	am := NewAuthManager(AuthConfig{
+	am := NewTestAuthManager(AuthConfig{
 		JWTSecret:      "test-secret",
 		RateLimit:      100,
 		AllowAnonymous: true,
@@ -191,7 +191,7 @@ func TestMiddlewareWithAnonymousAccess(t *testing.T) {
 
 // TestRequireRole tests role-based access control
 func TestRequireRole(t *testing.T) {
-	am := NewAuthManager(AuthConfig{
+	am := NewTestAuthManager(AuthConfig{
 		JWTSecret: "test-secret",
 		RateLimit: 100,
 	})
@@ -331,7 +331,7 @@ func TestRateLimiting(t *testing.T) {
 
 // TestRateLimitMiddleware tests rate limiting in middleware
 func TestRateLimitMiddleware(t *testing.T) {
-	am := NewAuthManager(AuthConfig{
+	am := NewTestAuthManager(AuthConfig{
 		JWTSecret: "test-secret",
 		RateLimit: 3, // Very low limit for testing
 	})
@@ -368,7 +368,7 @@ func TestRateLimitMiddleware(t *testing.T) {
 
 // TestGetCurrentUser tests getting current user from context
 func TestGetCurrentUser(t *testing.T) {
-	am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+	am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 
 	user, err := am.CreateUser("testuser", "test@example.com", []string{"user"})
 	require.NoError(t, err)
@@ -404,7 +404,7 @@ func TestGetCurrentUser(t *testing.T) {
 
 // TestGetCurrentUserID tests getting current user ID from context
 func TestGetCurrentUserID(t *testing.T) {
-	am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+	am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 
 	user, err := am.CreateUser("testuser", "test@example.com", []string{"user"})
 	require.NoError(t, err)
@@ -526,7 +526,7 @@ func TestGetClientID(t *testing.T) {
 
 // TestAuthenticationMethods tests all authentication methods
 func TestAuthenticationMethods(t *testing.T) {
-	am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+	am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 
 	user, err := am.CreateUser("testuser", "test@example.com", []string{"user"})
 	require.NoError(t, err)
@@ -574,7 +574,7 @@ func TestAuthenticationMethods(t *testing.T) {
 			setupRequest: func(req *http.Request) {
 				req.AddCookie(&http.Cookie{
 					Name:  "session_id",
-					Value: session.ID,
+					Value: session,
 				})
 			},
 			wantErr: false,
@@ -616,7 +616,7 @@ func TestAuthenticationMethods(t *testing.T) {
 
 // TestMultipleRolesAccess tests access with multiple role requirements
 func TestMultipleRolesAccess(t *testing.T) {
-	am := NewAuthManager(AuthConfig{JWTSecret: "test-secret"})
+	am := NewTestAuthManager(AuthConfig{JWTSecret: "test-secret"})
 
 	// Create users with different role combinations
 	user1, _ := am.CreateUser("user1", "user1@example.com", []string{"developer"})
@@ -681,7 +681,7 @@ func TestRateLimiterStats(t *testing.T) {
 
 // BenchmarkMiddlewareAuth benchmarks middleware authentication
 func BenchmarkMiddlewareAuth(b *testing.B) {
-	am := NewAuthManager(AuthConfig{
+	am := NewTestAuthManager(AuthConfig{
 		JWTSecret: "test-secret",
 		RateLimit: 10000, // High limit for benchmarking
 	})
