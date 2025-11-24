@@ -14,9 +14,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-redis/redis/v8"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/seanankenbruck/observability-ai/internal/auth"
 	"github.com/seanankenbruck/observability-ai/internal/mimir"
 	"github.com/seanankenbruck/observability-ai/internal/semantic"
+	"github.com/seanankenbruck/observability-ai/internal/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -127,6 +130,19 @@ func TestAuthenticatedAPIIntegration(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
+	// Setup: Create Redis client for session management
+	mr, err := miniredis.Run()
+	require.NoError(t, err)
+	defer mr.Close()
+
+	rdb := redis.NewClient(&redis.Options{
+		Addr: mr.Addr(),
+	})
+	defer rdb.Close()
+
+	// Setup: Create session manager
+	sessionManager := session.NewManager(rdb, 24*time.Hour)
+
 	// Setup: Create auth manager
 	authManager := auth.NewAuthManager(auth.AuthConfig{
 		JWTSecret:      "test-integration-secret",
@@ -134,7 +150,7 @@ func TestAuthenticatedAPIIntegration(t *testing.T) {
 		SessionExpiry:  24 * time.Hour,
 		RateLimit:      100,
 		AllowAnonymous: false,
-	})
+	}, sessionManager)
 
 	// Setup: Create test user
 	user, err := authManager.CreateUser("integration-user", "test@integration.com", []string{"user", "admin"})

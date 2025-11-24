@@ -169,7 +169,7 @@ func (am *AuthManager) authenticateSession(c *gin.Context) (*User, error) {
 		return nil, err
 	}
 
-	user, _, err := am.ValidateSession(sessionID)
+	user, err := am.ValidateSession(sessionID)
 	if err != nil {
 		return nil, err
 	}

@@ -2,6 +2,7 @@
 package auth
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -12,6 +13,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
+	"github.com/seanankenbruck/observability-ai/internal/session"
 )
 
 // User represents a user in the system
@@ -69,16 +71,16 @@ type AuthConfig struct {
 
 // AuthManager handles authentication and user management
 type AuthManager struct {
-	config   AuthConfig
-	users    map[string]*User          // userID -> User
-	apiKeys  map[string]*APIKey        // hashedKey -> APIKey
-	sessions map[string]*Session       // sessionID -> Session
-	userByUsername map[string]*User   // username -> User
-	mu       sync.RWMutex
+	config         AuthConfig
+	users          map[string]*User        // userID -> User
+	apiKeys        map[string]*APIKey      // hashedKey -> APIKey
+	userByUsername map[string]*User        // username -> User
+	sessionManager *session.Manager        // Redis-based session manager
+	mu             sync.RWMutex
 }
 
 // NewAuthManager creates a new authentication manager
-func NewAuthManager(config AuthConfig) *AuthManager {
+func NewAuthManager(config AuthConfig, sessionManager *session.Manager) *AuthManager {
 	// Set defaults
 	if config.JWTExpiry == 0 {
 		config.JWTExpiry = 24 * time.Hour
@@ -97,12 +99,12 @@ func NewAuthManager(config AuthConfig) *AuthManager {
 		config:         config,
 		users:          make(map[string]*User),
 		apiKeys:        make(map[string]*APIKey),
-		sessions:       make(map[string]*Session),
 		userByUsername: make(map[string]*User),
+		sessionManager: sessionManager,
 	}
 
-	// Create default admin user
-	adminUser, _ := am.CreateUser("admin", "admin@example.com", []string{"admin", "user"})
+	// Create default admin user with fixed UUID for consistency across pods
+	adminUser := am.createDefaultAdminUser()
 	if adminUser != nil {
 		fmt.Printf("Created default admin user (ID: %s)\n", adminUser.ID)
 	}
@@ -315,62 +317,59 @@ func (am *AuthManager) ValidateJWTToken(tokenString string) (*Claims, error) {
 	return claims, nil
 }
 
-// CreateSession creates a new session for a user
-func (am *AuthManager) CreateSession(userID string) (*Session, error) {
-	am.mu.Lock()
-	defer am.mu.Unlock()
+// CreateSession creates a new session for a user in Redis
+func (am *AuthManager) CreateSession(userID string) (string, error) {
+	am.mu.RLock()
+	user, exists := am.users[userID]
+	am.mu.RUnlock()
 
-	// Verify user exists
-	if _, exists := am.users[userID]; !exists {
-		return nil, fmt.Errorf("user not found: %s", userID)
+	if !exists {
+		return "", fmt.Errorf("user not found: %s", userID)
 	}
 
-	session := &Session{
-		ID:        uuid.New().String(),
-		UserID:    userID,
-		CreatedAt: time.Now(),
-		ExpiresAt: time.Now().Add(am.config.SessionExpiry),
-		LastSeen:  time.Now(),
-		Active:    true,
+	// Create JWT token for the session
+	token, err := am.CreateJWTToken(user)
+	if err != nil {
+		return "", fmt.Errorf("failed to create token: %w", err)
 	}
 
-	am.sessions[session.ID] = session
+	// Create session in Redis
+	sessionID, err := am.sessionManager.Create(context.Background(), user.ID, user.Username, token, user.Roles)
+	if err != nil {
+		return "", fmt.Errorf("failed to create session: %w", err)
+	}
 
-	return session, nil
+	return sessionID, nil
 }
 
-// ValidateSession validates a session and returns the associated user
-func (am *AuthManager) ValidateSession(sessionID string) (*User, *Session, error) {
-	am.mu.Lock()
-	defer am.mu.Unlock()
+// ValidateSession validates a session from Redis and returns the associated user
+func (am *AuthManager) ValidateSession(sessionID string) (*User, error) {
+	// Get session from Redis
+	sess, err := am.sessionManager.Get(context.Background(), sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid session: %w", err)
+	}
 
-	session, exists := am.sessions[sessionID]
+	// Get user
+	am.mu.RLock()
+	user, exists := am.users[sess.UserID]
+	am.mu.RUnlock()
+
 	if !exists {
-		return nil, nil, fmt.Errorf("session not found")
-	}
-
-	if !session.Active {
-		return nil, nil, fmt.Errorf("session is inactive")
-	}
-
-	if time.Now().After(session.ExpiresAt) {
-		return nil, nil, fmt.Errorf("session has expired")
-	}
-
-	// Get associated user
-	user, exists := am.users[session.UserID]
-	if !exists {
-		return nil, nil, fmt.Errorf("user not found for session")
+		return nil, fmt.Errorf("user not found for session")
 	}
 
 	if !user.Active {
-		return nil, nil, fmt.Errorf("user is inactive")
+		return nil, fmt.Errorf("user is inactive")
 	}
 
-	// Update last seen timestamp
-	session.LastSeen = time.Now()
+	// Refresh session TTL in Redis
+	if err := am.sessionManager.Refresh(context.Background(), sessionID); err != nil {
+		// Log but don't fail - session is still valid
+		fmt.Printf("Warning: failed to refresh session: %v\n", err)
+	}
 
-	return user, session, nil
+	return user, nil
 }
 
 // RevokeAPIKey revokes an API key
@@ -389,33 +388,17 @@ func (am *AuthManager) RevokeAPIKey(keyID string) error {
 	return fmt.Errorf("API key not found: %s", keyID)
 }
 
-// RevokeSession revokes a session
+// RevokeSession revokes a session from Redis
 func (am *AuthManager) RevokeSession(sessionID string) error {
-	am.mu.Lock()
-	defer am.mu.Unlock()
-
-	session, exists := am.sessions[sessionID]
-	if !exists {
-		return fmt.Errorf("session not found: %s", sessionID)
-	}
-
-	session.Active = false
-	return nil
+	return am.sessionManager.Delete(context.Background(), sessionID)
 }
 
-// CleanupExpired removes expired sessions and API keys
+// CleanupExpired removes expired API keys (sessions are auto-expired by Redis TTL)
 func (am *AuthManager) CleanupExpired() {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
 	now := time.Now()
-
-	// Cleanup expired sessions
-	for id, session := range am.sessions {
-		if now.After(session.ExpiresAt) {
-			delete(am.sessions, id)
-		}
-	}
 
 	// Cleanup expired API keys
 	for hash, apiKey := range am.apiKeys {
@@ -457,6 +440,34 @@ func (am *AuthManager) ListUsers() []*User {
 }
 
 // Helper functions
+
+// createDefaultAdminUser creates the default admin user with a fixed UUID
+func (am *AuthManager) createDefaultAdminUser() *User {
+	// Use a fixed UUID for the admin user so it's consistent across all pods
+	adminID := "00000000-0000-0000-0000-000000000001"
+
+	// Check if admin already exists (shouldn't happen, but be safe)
+	am.mu.Lock()
+	defer am.mu.Unlock()
+
+	if _, exists := am.userByUsername["admin"]; exists {
+		return am.userByUsername["admin"]
+	}
+
+	user := &User{
+		ID:       adminID,
+		Username: "admin",
+		Email:    "admin@example.com",
+		Roles:    []string{"admin", "user"},
+		Metadata: make(map[string]string),
+		Active:   true,
+	}
+
+	am.users[user.ID] = user
+	am.userByUsername[user.Username] = user
+
+	return user
+}
 
 // generateRandomString generates a random string of specified length
 func generateRandomString(length int) string {
