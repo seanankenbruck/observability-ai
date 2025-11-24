@@ -15,6 +15,7 @@ import (
 	"github.com/seanankenbruck/observability-ai/internal/observability"
 	"github.com/seanankenbruck/observability-ai/internal/processor"
 	"github.com/seanankenbruck/observability-ai/internal/semantic"
+	"github.com/seanankenbruck/observability-ai/internal/session"
 )
 
 func main() {
@@ -95,6 +96,9 @@ func main() {
 		defer discoveryService.Stop()
 	}
 
+	// Initialize session manager (Redis-based)
+	sessionManager := session.NewManager(rdb, cfg.Auth.SessionExpiry)
+
 	// Initialize auth manager
 	authManager := auth.NewAuthManager(auth.AuthConfig{
 		JWTSecret:      cfg.Auth.JWTSecret,
@@ -102,7 +106,7 @@ func main() {
 		SessionExpiry:  cfg.Auth.SessionExpiry,
 		RateLimit:      cfg.Auth.RateLimit,
 		AllowAnonymous: cfg.Auth.AllowAnonymous,
-	})
+	}, sessionManager)
 
 	// Start auth cleanup routine
 	go func() {
