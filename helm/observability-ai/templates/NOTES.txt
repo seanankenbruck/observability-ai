@@ -69,29 +69,14 @@ Configuration:
 ⚠ Using inline secrets (not recommended for production)
 {{- end }}
 
-{{- if .Values.postgresql.enabled }}
-✓ Using built-in PostgreSQL (subchart)
-  Connection: {{ include "observability-ai.fullname" . }}-postgresql:5432
-{{- else }}
-✓ Using external PostgreSQL
-  {{- if .Values.config.database.external.host }}
-  Host: {{ .Values.config.database.external.host }}:{{ .Values.config.database.external.port }}
-  {{- else }}
-  ⚠ Warning: External database host not configured in config.database.external.host
-  {{- end }}
-{{- end }}
+✓ PostgreSQL Configuration
+  Host: {{ .Values.postgresql.host }}:{{ .Values.postgresql.port }}
+  Database: {{ .Values.postgresql.database }}
+  SSL Mode: {{ .Values.postgresql.sslMode }}
 
-{{- if .Values.redis.enabled }}
-✓ Using built-in Redis (subchart)
-  Connection: {{ include "observability-ai.fullname" . }}-redis-master:6379
-{{- else }}
-✓ Using external Redis
-  {{- if .Values.config.redis.external.host }}
-  Host: {{ .Values.config.redis.external.host }}:{{ .Values.config.redis.external.port }}
-  {{- else }}
-  ⚠ Warning: External Redis host not configured in config.redis.external.host
-  {{- end }}
-{{- end }}
+✓ Redis Configuration
+  Host: {{ .Values.redis.host }}:{{ .Values.redis.port }}
+  Database: {{ .Values.redis.db }}
 
 Gin Mode: {{ .Values.config.server.ginMode }}
 {{- if ne .Values.config.server.ginMode "release" }}
