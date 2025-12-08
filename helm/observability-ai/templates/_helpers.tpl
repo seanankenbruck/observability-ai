@@ -92,69 +92,45 @@ app.kubernetes.io/component: web
 {{- end }}
 
 {{/*
-Database host - uses subchart if enabled, otherwise external
+Database host
 */}}
 {{- define "observability-ai.database.host" -}}
-{{- if .Values.postgresql.enabled }}
-{{- printf "%s-postgresql" (include "observability-ai.fullname" .) }}
-{{- else }}
-{{- .Values.externalDatabase.host }}
-{{- end }}
+{{- .Values.postgresql.host | required "postgresql.host is required" }}
 {{- end }}
 
 {{/*
 Database port
 */}}
 {{- define "observability-ai.database.port" -}}
-{{- if .Values.postgresql.enabled }}
-{{- .Values.postgresql.primary.service.ports.postgresql | default 5432 }}
-{{- else }}
-{{- .Values.externalDatabase.port }}
-{{- end }}
+{{- .Values.postgresql.port }}
 {{- end }}
 
 {{/*
 Database name
 */}}
 {{- define "observability-ai.database.name" -}}
-{{- if .Values.postgresql.enabled }}
-{{- .Values.postgresql.auth.database }}
-{{- else }}
-{{- .Values.externalDatabase.database }}
-{{- end }}
+{{- .Values.postgresql.database }}
 {{- end }}
 
 {{/*
 Database username
 */}}
 {{- define "observability-ai.database.username" -}}
-{{- if .Values.postgresql.enabled }}
-{{- .Values.postgresql.auth.username }}
-{{- else }}
-{{- .Values.externalDatabase.username }}
-{{- end }}
+{{- .Values.postgresql.username }}
 {{- end }}
 
 {{/*
-Redis host - uses subchart if enabled, otherwise external
+Redis host
 */}}
 {{- define "observability-ai.redis.host" -}}
-{{- if .Values.redis.enabled }}
-{{- printf "%s-redis-master" (include "observability-ai.fullname" .) }}
-{{- else }}
-{{- .Values.externalRedis.host }}
-{{- end }}
+{{- .Values.redis.host | required "redis.host is required" }}
 {{- end }}
 
 {{/*
 Redis port
 */}}
 {{- define "observability-ai.redis.port" -}}
-{{- if .Values.redis.enabled }}
-{{- .Values.redis.master.service.ports.redis | default 6379 }}
-{{- else }}
-{{- .Values.externalRedis.port }}
-{{- end }}
+{{- .Values.redis.port }}
 {{- end }}
 
 {{/*

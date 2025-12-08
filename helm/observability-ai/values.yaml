@@ -226,24 +226,6 @@ config:
     port: "8080"
     ginMode: "release"
 
-  # Database configuration
-  database:
-    # Use external database (if postgresql.enabled=false)
-    external:
-      host: ""
-      port: "5432"
-    name: "observability_ai"
-    username: "obs_ai"
-    sslMode: "disable"
-
-  # Redis configuration
-  redis:
-    # Use external Redis (if redis.enabled=false)
-    external:
-      host: ""
-      port: "6379"
-    db: "0"
-
   # Claude AI configuration
   claude:
     model: "claude-3-haiku-20240307"
@@ -289,46 +271,33 @@ config:
     enableSafetyChecks: true
     forbiddenMetricNames: ".*_secret.*,.*_password.*,.*_token.*"
 
-# PostgreSQL subchart configuration
-# See https://github.com/bitnami/charts/tree/main/bitnami/postgresql
+# PostgreSQL Configuration
+# Customers should provide their own PostgreSQL database
 postgresql:
-  enabled: false  # Disabled - using standalone PostgreSQL with official image instead
-  auth:
-    username: obs_ai
-    password: changeme
-    database: observability_ai
-
-# External PostgreSQL configuration (when postgresql.enabled=false)
-externalDatabase:
-  host: observability-ai-postgresql-standalone
+  # Connection settings
+  host: ""  # REQUIRED: PostgreSQL host (e.g., my-postgres.example.com)
   port: 5432
-  username: obs_ai
-  database: observability_ai
-  password: changeme  # Only used if not using existingSecret
+  database: "observability_ai"
+  username: "obs_ai"
 
-# Redis subchart configuration
-# See https://github.com/bitnami/charts/tree/main/bitnami/redis
+  # SSL/TLS Configuration
+  sslMode: "disable"  # Options: disable, require, verify-ca, verify-full
+
+  # Connection pool settings (optional - sensible defaults used if not set)
+  # maxOpenConns: 25      # Maximum number of open connections
+  # maxIdleConns: 5       # Maximum number of idle connections
+  # connMaxLifetime: "5m" # Maximum lifetime of a connection
+
+  # Password is provided via secrets.dbPassword or secrets.existingSecret
+
+# Redis Configuration
+# Customers should provide their own Redis instance
 redis:
-  enabled: false  # Disabled due to image pull issues with Bitnami on ARM64
-  auth:
-    enabled: true
-    password: changeme  # CHANGE IN PRODUCTION
-  master:
-    persistence:
-      enabled: true
-      size: 8Gi
-    resources:
-      limits:
-        cpu: 500m
-        memory: 512Mi
-      requests:
-        cpu: 100m
-        memory: 128Mi
-  replica:
-    replicaCount: 0  # No replicas by default
-
-# External Redis configuration (when redis.enabled=false)
-externalRedis:
-  host: observability-ai-redis-standalone
+  # Connection settings
+  host: ""  # REQUIRED: Redis host (e.g., my-redis.example.com)
   port: 6379
-  password: changeme
+  db: 0
+
+  # Authentication (optional)
+  # If password is empty, Redis connection will be made without authentication
+  # Password is provided via secrets.redisPassword or secrets.existingSecret
