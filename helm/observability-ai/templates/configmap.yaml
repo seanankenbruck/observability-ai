@@ -47,8 +47,8 @@ data:
   DB_PORT: {{ include "observability-ai.database.port" . | quote }}
   DB_NAME: {{ include "observability-ai.database.name" . | quote }}
   DB_USER: {{ include "observability-ai.database.username" . | quote }}
-  DB_SSLMODE: {{ .Values.config.database.sslMode | quote }}
+  DB_SSLMODE: {{ .Values.postgresql.sslMode | quote }}
 
   # Redis Configuration (non-secret)
   REDIS_ADDR: {{ printf "%s:%v" (include "observability-ai.redis.host" .) (include "observability-ai.redis.port" .) | quote }}
-  REDIS_DB: {{ .Values.config.redis.db | quote }}
+  REDIS_DB: {{ .Values.redis.db | quote }}
