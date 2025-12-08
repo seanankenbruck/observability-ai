@@ -17,18 +17,3 @@ sources:
 maintainers:
   - name: Sean Ankenbruck
     url: https://github.com/seanankenbruck
-
-# Dependencies - optional subcharts for PostgreSQL and Redis
-dependencies:
-  - name: postgresql
-    version: "13.x.x"
-    repository: https://charts.bitnami.com/bitnami
-    condition: postgresql.enabled
-    tags:
-      - database
-  - name: redis
-    version: "18.x.x"
-    repository: https://charts.bitnami.com/bitnami
-    condition: redis.enabled
-    tags:
-      - cache
